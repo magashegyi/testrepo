@@ -40,11 +40,14 @@ class Wavefunction(TypedDict):
 Attributes:
     charge (float): The charge of the particle.
     mass (float): The mass of the particle.
+    wavenumber (float): The wavenumber of the particle.
     state (Wavefunction): The wavefunction representing the state of the particle.
 """
 class Particle(TypedDict):
     charge: float
     mass: float
+    angular_frequency: float
+    wavenumber: float
     state: Wavefunction
 
 def mask_wavefunction(wavefunction: Wavefunction, mask: np.ndarray) -> Wavefunction:
@@ -326,25 +329,54 @@ def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
     return Vcap
 
 #Stationary state time evolution
-def eigenstate_time_evolution( omega: float, times: np.array,\
-                               eigenstate: Wavefunction,\
-                               mask: Optional[np.ndarray] = None) -> Wavefunction:
+def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefunction, mask: Optional[np.array] = None) -> Wavefunction:
+    """
+    Compute the time evolution of an eigenstate under a given frequency.
 
-    nx=len(eigenstate["grid"])
-    nt=len(times)
-    psi = np.zeros((nx,nt),dtype=np.complex128)
-    psi[:,0] = eigenstate["value"]
+    Parameters:
+    -----------
+    omega : float
+        The angular frequency of the time evolution.
+    times : np.array
+        Array of time points at which to evaluate the time evolution.
+    eigenstate : Wavefunction
+        The initial eigenstate represented as a Wavefunction object, containing 'grid' and 'value'.
+    mask : Optional[np.ndarray], optional
+        A boolean mask array to apply to the grid and value of the eigenstate. If None, no mask is applied.
 
-    for i,t in zip(range(1,nt),times[1:]):
-        psi[:,i] = np.exp(-1j*omega*t)*eigenstate["value"]
+    Returns:
+    --------
+    Wavefunction
+        A Wavefunction object containing the grid and the time-evolved values at each time point.
+    """
 
-    eigenstatete=Wavefunction(grid=eigenstate["grid"],value=psi)
+    if mask is None:
+        nx=len(eigenstate["grid"])
+        nt=len(times)
+        psi = np.zeros((nx,nt),dtype=np.complex128)
 
-    if mask is not None:
-        eigenstate = mask_wavefunction(eigenstatete, mask)
+        eigenstate_value = eigenstate["value"]
+        psi[:,0] = eigenstate_value
+        for i, t in enumerate(times[1:], start=1):
+            psi[:,i] = np.exp(-1j*omega*t)*eigenstate_value
 
-    return eigenstatete
-    
+        return Wavefunction(grid=eigenstate["grid"], value=psi)
+
+    else:
+        masked_grid = eigenstate['grid'][mask]
+        masked_value = eigenstate['value'][mask]
+        masked_nx=len(masked_grid)
+        nt=len(times)
+        masked_psi = np.zeros((masked_nx,nt),dtype=np.complex128)
+
+        masked_psi[:,0] = masked_value
+        for i, t in enumerate(times[1:], start=1):
+            masked_psi[:,i] = np.exp(-1j*omega*t)*masked_value
+
+        return Wavefunction(grid=masked_grid, value=masked_psi)
+
+
+
 """Class for solving the time-dependent Schrödinger equation using the Crank-Nicholson method.
 
 Attributes:
