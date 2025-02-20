@@ -5,8 +5,6 @@ import scipy
 from typing import TypedDict
 
 class QuasiParticle(qtk.Particle,TypedDict):
-    energy: float
-    wavenumber: float
     amplitudes: tuple
     transmission: float
     reflection: float

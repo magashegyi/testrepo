@@ -50,6 +50,19 @@ class Particle(TypedDict):
     wavenumber: float
     state: Wavefunction
 
+def plane_wave(k: float, grid: np.array) -> Wavefunction:
+    """
+    Generate a plane wave function.
+
+    Parameters:
+    k (float): The wavenumber of the plane wave.
+    grid (np.array): The spatial grid.
+
+    Returns:
+    Wavefunction: The plane wave function.
+    """
+    return Wavefunction(grid=grid, value=np.exp(1j*k*grid))
+
 def mask_wavefunction(wavefunction: Wavefunction, mask: np.ndarray) -> Wavefunction:
     """
     Apply a mask to the wavefunction to store only certain points and their corresponding values.
@@ -526,6 +539,7 @@ class SplitTimeEvolutionCalculator:
         self.__uxgrid=scalarpot.grid #psi1_initial["grid"]
         zeropot=pots.ZeroPotential(self.__uxgrid)
         self.__save_interval = save_interval
+        self.__mask = mask
 
         hham2h1 = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,\
                                     vectorpot=vectorpot,\
@@ -539,10 +553,15 @@ class SplitTimeEvolutionCalculator:
         v_cap=vcap_generator(self.__uxgrid)
         hham.vcap(v_cap)
 
+        self.__masked_nx=len(self.__uxgrid[mask])
         self.__nx=len(self.__uxgrid)
         self.__nt=len(self.__utgrid)
-        self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
-                                            dtype=np.complex128)#np.zeros_like(ini_state)
+        if mask is None:
+            self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
+                                            dtype=np.complex128)
+        else:
+            self.__psi1_time_evolution=np.zeros((self.__masked_nx,self.__nt),\
+                                            dtype=np.complex128)   
 
         self.__solver=CntdSes(np.zeros(self.__nx,dtype=np.complex128), hham,dt=dt)
         sb=SplitBoundary( hham2h1, h0ham2h1, psi0_initial,psi0_omega)
@@ -551,18 +570,28 @@ class SplitTimeEvolutionCalculator:
     """Run the time evolution calculation."""
     def run(self):
 
-        self.__psi0_time_evolution = eigenstate_time_evolution(self.__psi0_omega,\
-                                        self.__utgrid, self.__psi0_initial)
-
-        self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
-        save_step = int(self.__save_interval / self.__solver._CntdSes__dt)
-        for i in range(1,self.__nt):
-            if i % save_step == 0:
-                self.__psi1_time_evolution[:,i]=self.__solver.step_one()
-            else:
-                self.__solver.step_one()
+        # save_step = int(self.__save_interval / self.__solver._CntdSes__dt)
         # for i in range(1,self.__nt):
-        #     self.__psi1_time_evolution[:,i]=self.__solver.step_one()
+        #     if i % save_step == 0:
+        #         self.__psi1_time_evolution[:,i]=self.__solver.step_one()
+        #     else:
+        #         self.__solver.step_one()
+
+        if self.__mask is None:
+            self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
+                                            self.__utgrid, self.__psi0_initial)
+
+            self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
+            for i in range(1,self.__nt):
+                self.__psi1_time_evolution[:,i]=self.__solver.step_one()
+
+        else:
+            self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
+                                            self.__utgrid, self.__psi0_initial, self.__mask)
+
+            self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
+            for i in range(1,self.__nt):
+                self.__psi1_time_evolution[:,i]=self.__solver.step_one()[self.__mask]
 
     @property
     def psi0_time_evolution(self):
