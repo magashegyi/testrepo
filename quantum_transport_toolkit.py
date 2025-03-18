@@ -1,5 +1,6 @@
 import quantum_toolkit as qtk
 import scipy.sparse as sparse
+from numpy import linalg
 import numpy as np
 import scipy
 from typing import TypedDict
@@ -156,6 +157,74 @@ def amplitudes(k: float,wf: qtk.Wavefunction):
 
     return (Ain,At,Ar)
 
+def amplitudes2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
+    """
+    Compute the amplitudes of the incoming and reflected waves
+    for a given wavefunction at a given energy. The amplitudes
+    are computed by fitting the wavefunction to the sum of
+    incoming and reflected waves.        
+    """
+    # Split the wavefunction into left and right parts
+
+    x_left = wf["grid"][:fit_num]
+    x_right = wf["grid"][-fit_num:]
+
+    # Solve with least-squares solution
+    A = np.zeros([fit_num,2],dtype=np.complex128)
+    A[:,0]=np.exp(1j*k*x_left) # incoming wave on the left
+    A[:,1]=np.exp(-1j*k*x_left) # reflected wave on the left
+    b=wf["value"][:fit_num].T
+
+    x_lstsq = linalg.lstsq(A,b,rcond=None)[0] # computing the numpy solution
+    a_left=x_lstsq[0] # complex amplitude of positive propagating wave on the left
+    b_left=x_lstsq[1] # complex amplitude of negative propagating wave on the left
+    
+    A = np.zeros([fit_num,2],dtype=np.complex128)
+    A[:,0]=np.exp(1j*k*x_right) # incoming wave on the right
+    A[:,1]=np.exp(-1j*k*x_right) # reflected wave on the right
+    b=wf["value"][-fit_num:].T
+
+    x_lstsq = linalg.lstsq(A,b,rcond=None)[0] # computing the numpy solution
+    a_right=x_lstsq[0] # complex amplitude of positive propagating wave on the right
+    b_right=x_lstsq[1] # complex amplitude of negative propagating wave on the right
+
+    return (a_left,b_left,a_right,b_right)
+
+def input_amplitude2(k: float,wf: qtk.Wavefunction, fit_num: int = 100):
+    """
+    Compute the amplitude of the incoming wave for a given wavefunction
+    """
+
+    a_left,b_left,a_right,b_right = amplitudes2(k,wf,fit_num)
+    if k>0:
+        return a_left
+    else:
+        return b_right
+    
+def transmission_amplitude2(k: float,wf: qtk.Wavefunction, fit_num: int = 100):
+    """
+    Compute the amplitude of the transmitted wave for a given wavefunction
+    """
+
+    a_left,b_left,a_right,b_right = amplitudes2(k,wf,fit_num)
+    if k>0:
+        return a_right
+    else:
+        return b_left
+
+
+def reflection_amplitude2(k: float,wf: qtk.Wavefunction, fit_num: int = 100):
+    """
+    Compute the amplitude of the reflected wave for a given wavefunction
+    """
+
+    a_left,b_left,a_right,b_right = amplitudes2(k,wf,fit_num)
+    if k>0:
+        return b_left
+    else:
+        return a_right
+
+
 # def amplitudes(qp: QuasiParticle):
 
 #     return amplitudes_from_wavefunction(qp["wavenumber"],qp["state"])
@@ -164,12 +233,34 @@ def transmission(k: float,wf: qtk.Wavefunction):
     Ain,At = input_amplitude(k,wf),transmission_amplitude(k,wf)#amplitudes(qp)
     return np.abs(At*np.conj(At))/np.abs(Ain*np.conj(Ain))
 
+def transmission2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
+    """
+    Compute the transmission coefficient for a given wavefunction at a given energy
+    """
+    a_left,b_left,a_right,b_right = amplitudes2(k,wf,fit_num)
+    if k>0:
+        return np.abs(a_right*np.conj(a_right))/np.abs(a_left*np.conj(a_left))
+    else:
+        return np.abs(b_left*np.conj(b_left))/np.abs(b_right*np.conj(b_right))
+
 def reflection(k: float,wf: qtk.Wavefunction):
+    """
+    Compute the reflection coefficient for a given wavefunction at a given energy
+    """
     Ain,Ar = input_amplitude(k,wf),reflection_amplitude(k,wf)
     return np.abs(Ar*np.conj(Ar))/np.abs(Ain*np.conj(Ain))
 
-def density_of_states_from_green_function(Gret):
+def reflection2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
+    """
+    Compute the reflection coefficient for a given wavefunction at a given energy
+    """
+    a_left,b_left,a_right,b_right = amplitudes2(k,wf,fit_num)
+    if k>0:
+        return np.abs(b_left*np.conj(b_left))/np.abs(a_left*np.conj(a_left))
+    else:
+        return np.abs(a_right*np.conj(a_right))/np.abs(b_right*np.conj(b_right))
 
+def density_of_states_from_green_function(Gret):
     return (-1/np.pi)*np.imag(np.trace(Gret))
 
 
