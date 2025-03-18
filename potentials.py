@@ -31,6 +31,20 @@ class ZeroPotential(Potential):
 
     def value_at(self, space: float, time: float) -> float:
         return float(0.0)
+    
+class ConstantPotential(Potential):
+
+    def __init__(self, grid: np.array, value: float):
+        super().__init__(grid)
+        self.__value = value
+
+    """Class representing a zero potential."""
+
+    def __call__(self, time: float) -> np.array:
+        return self.__value*np.ones_like(self._grid)
+
+    def value_at(self, space: float, time: float) -> float:
+        return self.__value
 
 class StackPotential(Potential):
     """Class representing a stack potential.

@@ -224,21 +224,24 @@ def normed_states_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperato
     else:
         return nstatepk, nstatemk
 
-def quasiparticles_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False):
+def quasiparticles_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False, normed=True):
 
-    nstatepk, nstatemk, green = normed_states_at_given_energy(ein,kin,ham,return_green=True)
+    if normed:
+        statepk, statemk, green = normed_states_at_given_energy(ein,kin,ham,return_green=True)
+    else:
+        statepk, statemk, green = states_at_given_energy(ein,ham,return_green=True)
 
     qppk= QuasiParticle( charge=ham.charge, mass=ham.mass,\
-            state=nstatepk,energy=ein, wavenumber=kin,\
-            amplitudes = amplitudes(kin,nstatepk),\
-            transmission = transmission(kin,nstatepk),\
-            reflection = reflection(kin,nstatepk))
+            state=statepk,energy=ein, wavenumber=kin,\
+            amplitudes = amplitudes(kin,statepk),\
+            transmission = transmission(kin,statepk),\
+            reflection = reflection(kin,statepk))
     
     qpmk= QuasiParticle(charge=ham.charge, mass=ham.mass,\
-            state=nstatemk,energy=ein, wavenumber=-kin,\
-            amplitudes = amplitudes(-kin,nstatemk),\
-            transmission = transmission(-kin,nstatemk),\
-            reflection = reflection(-kin,nstatemk))
+            state=statemk,energy=ein, wavenumber=-kin,\
+            amplitudes = amplitudes(-kin,statemk),\
+            transmission = transmission(-kin,statemk),\
+            reflection = reflection(-kin,statemk))
 
     if return_green:
         return qppk, qpmk, green

@@ -8,22 +8,7 @@ import scipy.sparse as sparse
 #from abc import ABC, abstractmethod # abstract base class
 from typing import TypedDict, Optional
 import potentials as pots
-
-"""Class representing atomic units used in quantum mechanics.
-
-Attributes:
-    action (float): The action unit.
-    charge (float): The charge unit.
-    mass (float): The mass unit.
-    permittivity (float): The permittivity unit.
-"""
-class AtomicUnits(TypedDict):
-    action: float
-    charge: float
-    mass: float
-    permittivity: float
-
-hartree_atomic_units = AtomicUnits( action=1, charge =1, mass = 1, permittivity = 1)
+from atomic_units import hartree_atomic_base_units as hartree_atomic_units
 
 """Class representing a wavefunction in quantum mechanics.
 
@@ -100,7 +85,7 @@ def probability_current(state: Wavefunction):
 #     def __call__(self) -> float:
 #         return self.__t
 
-def const_t(dx: float,hbar: float=hartree_atomic_units["action"],m: float=hartree_atomic_units["mass"]) -> float:
+def const_t(dx: float,hbar: float=hartree_atomic_units.hbar,m: float=hartree_atomic_units.m) -> float:
     return (hbar**2)/(2*m*(dx**2))
 
 # def const_t(hb: float,p: Particle):
@@ -123,12 +108,12 @@ Attributes:
 class Dispersion:
 
     def __init__(self,unified_step_size: float,\
-                  action: float = hartree_atomic_units["action"],\
-                  mass: float = hartree_atomic_units["mass"]):
+                  hbar: float = hartree_atomic_units.hbar,\
+                  mass: float = hartree_atomic_units.m):
 
-        self.__hbar=action
+        self.__hbar=hbar
         self.__step_size=unified_step_size
-        self.__t=const_t(unified_step_size,action,mass)
+        self.__t=const_t(unified_step_size,hbar,mass)
 
     """Convert energy to wave number (k).
 
@@ -224,7 +209,7 @@ class HamiltonOperator:
         self.__ham_diags = np.copy(self.__Kinetic) #+ np.copy(self.__Vcap)
 
         # add scalar potential
-        self.__ham_diags[1] += self.__charge*self.__spot(time)
+        self.__ham_diags[1] += self.__spot(time)#self.__charge*self.__spot(time)
 
         # vector potential
         self.__ham_diags[2] = self.__ham_diags[2]*np.exp(-self.__c1*self.__vpot(time))
@@ -297,16 +282,16 @@ class HamiltonOperator:
         return self.__xgrid
     
 def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
-                mass=hartree_atomic_units["mass"],\
-                hbar=hartree_atomic_units["action"],\
-                param_x0 = 0, param_lambda0 = 0.05,\
+                mass=hartree_atomic_units.m,\
+                hbar=hartree_atomic_units.hbar,\
+                param_x0 = None, param_lambda0 = 0.05,\
                 param_theta0 = 0.4 ):
 
     dx = uxgrid[1]-uxgrid[0]
     xnum = len(uxgrid)
     lamb = param_lambda0
 
-    if param_x0 == 0: 
+    if param_x0 == None: 
         x0=0.75*uxgrid[-1]#300
     else:
         x0=param_x0
@@ -527,11 +512,12 @@ Attributes:
 class SplitTimeEvolutionCalculator:
     def __init__(self,psi0_omega: float, psi0_initial: Wavefunction,\
                  scalarpot=pots.ZeroPotential,vectorpot=pots.ZeroPotential,\
-                 me=hartree_atomic_units["mass"],\
-                 hbar=hartree_atomic_units["action"],\
-                 charge=hartree_atomic_units["charge"],\
+                 me=hartree_atomic_units.m,\
+                 hbar=hartree_atomic_units.hbar,\
+                 charge=hartree_atomic_units.e,\
                  dt=0.01, t_start=0.0, t_stop=1.0, save_interval=0.1,\
-                 mask: Optional[np.ndarray] = None):
+                 mask: Optional[np.ndarray] = None,
+                 vcap = None):
         
         self.__psi0_omega=psi0_omega
         self.__psi0_initial=psi0_initial
@@ -550,8 +536,12 @@ class SplitTimeEvolutionCalculator:
         hham = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,\
                                     vectorpot=vectorpot,\
                                     me=me, hbar=hbar, charge=charge )
-        v_cap=vcap_generator(self.__uxgrid)
-        hham.vcap(v_cap)
+        
+        if vcap is None:
+            self.v_cap=vcap_generator(self.__uxgrid)
+        else:
+            self.v_cap=vcap
+        hham.vcap(self.v_cap)
 
         self.__masked_nx=len(self.__uxgrid[mask])
         self.__nx=len(self.__uxgrid)
