@@ -303,8 +303,8 @@ def states_at_given_energy(ein: float,ham: qtk.HamiltonOperator, return_green=Fa
 
 def normed_states_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False):
     statepk, statemk, green = states_at_given_energy(ein,ham,return_green=True)
-    ain_pk=input_amplitude(kin,statepk)
-    ain_mk=input_amplitude(-kin,statemk)
+    ain_pk=input_amplitude2(kin,statepk)
+    ain_mk=input_amplitude2(-kin,statemk)
 
     nstatepk_value, nstatemk_value = statepk["value"]/np.abs(ain_pk), statemk["value"]/np.abs(ain_mk)
     nstatepk=qtk.Wavefunction(grid=ham.grid,value=nstatepk_value)
@@ -314,11 +314,26 @@ def normed_states_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperato
         return nstatepk, nstatemk, green
     else:
         return nstatepk, nstatemk
+    
+def normed_states_at_given_energy2(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False):
+    statepk, statemk, green = states_at_given_energy(ein,ham,return_green=True)
+    ain_pk=input_amplitude2(kin,statepk)
+    ain_mk=input_amplitude2(-kin,statemk)
+
+    #nstatepk_value, nstatemk_value = statepk["value"]/np.abs(ain_pk), statemk["value"]/np.abs(ain_mk)
+    nstatepk=qtk.Wavefunction(grid=statepk["grid"],value=statepk["value"]/np.abs(ain_pk))
+    nstatemk=qtk.Wavefunction(grid=statemk["grid"],value=statemk["value"]/np.abs(ain_mk))
+    print(np.abs(ain_pk),np.abs(ain_mk))
+
+    if return_green:
+        return nstatepk, nstatemk, green
+    else:
+        return nstatepk, nstatemk
 
 def quasiparticles_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False, normed=True):
 
     if normed:
-        statepk, statemk, green = normed_states_at_given_energy(ein,kin,ham,return_green=True)
+        statepk, statemk, green = normed_states_at_given_energy2(ein,kin,ham,return_green=True)
     else:
         statepk, statemk, green = states_at_given_energy(ein,ham,return_green=True)
 
