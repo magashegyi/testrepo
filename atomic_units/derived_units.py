@@ -1,0 +1,166 @@
+"""
+Derived units
+Author: István Magashegyi
+Date: 2025 03 21
+Description: This module contains various functions and constants for atomic units.
+"""
+
+"""
+Rescaling Atomic units
+
+Notation: 
+One can say m=5kg then {m} = 5 and [m] = kg. In other words, { } means value and [ ] means unit.
+
+HAU = Hartree Atomic Units
+RAU = Rescaled Atomic Units
+
+Derived units
+
+1. example: length unit (Bohr radius)
+a_0 = (κ_0 * ħ^2) / (m_e * e_0^2)
+In SI units:
+a_0 = (κ_0_SI * ħ_SI^2) / (m_e_SI * e_0_SI^2)
+a_0 = (1.11265005620 * 10^-10 * (1.054571817 * 10^-34)^2) / (9.1093837139 * 10^-31 * (1.602176634 * 10^-19)^2)
+a_0 = 5.2917720989499097 * 10^-11 meters
+Therefore, in SI units:
+{a_0}_{SI} = 5.2917720989499097 * 10^-11; [a_0]_{SI} = meters
+
+In Hartree atomic units (HAU):
+a_0 = (κ_0_HAU * ħ_HAU^2) / (m_e_HAU * e_0_HAU^2)
+a_0 = (1 * 1^2) / (1 * 1^2)
+a_0 = 1 a_0 = 1 l_HAU
+Therefore, in HAU:
+{a_0}_{HAU} = 1; [a_0]_{HAU} = 5.2917720989499097 * 10^-11 meters = a_0
+
+In Rescaled Atomic Units (RAU):
+a_0 = (κ_0_RAU * ħ_RAU^2) / (m_e_RAU * e_0_RAU^2)
+a_0 = (X_k * X_h^2) / (X_m * X_e^2) * (r_e * 1.11265005620 * 10^-10 F/m * (r_h * 1.054571817 * 10^-34 Js)^2) / (r_m * 9.1093837139 * 10^-31 kg * (r_e * 1.602176634 * 10^-19 C)^2)
+a_0 = (X_k * X_h^2) / (X_m * X_e^2) * (r_e * r_h^2) / (r_m * r_e^2) * a_0
+a_0 = (X_k * X_h^2) / (X_m * X_e^2) l_RAU
+Therefore, in RAU:
+{a_0}_{RAU} = (X_k * X_h^2) / (X_m * X_e^2); [a_0]_{RAU} = (r_e * r_h^2) / (r_m * r_e^2) * a_0
+"""
+from .base_units import AtomicBaseUnits
+from typing import Union
+import pint
+import math
+
+class AtomicUnitSystem(AtomicBaseUnits):
+    """
+    Class to handle atomic units and their conversions.
+    """
+    def __init__(self, 
+                 xh: Union[float, None] = None, 
+                 xe: Union[float, None] = None,
+                 xm: Union[float, None] = None, 
+                 xk: Union[float, None] = None,
+                 base_units: Union[AtomicBaseUnits, None] = None):
+        """
+        Initialize the AtomicUnitSystem class with rescale factors or base units.
+
+        :param xh: Value of modified planck constant (hbar) in this atomic units.
+        :param xe: Value of elementary charge (xe) in this atomic units.
+        :param xm: Value of electron mass (xm) in this atomic units.
+        :param k0: Value of modified permittivity kappa0 = 4*Pi*epsilon0 in this atomic units.
+        :param base_units: An instance of AtomicBaseUnits.
+        """
+        
+        if base_units:
+            super().__init__(xh=base_units.hb, xe=base_units.e0, xm=base_units.me, xk=base_units.k0)
+        else:
+            if xh is None or xe is None or xm is None or xk is None:
+                raise ValueError("All units must be provided if base_units is not used")
+            super().__init__(xh=xh, xe=xe, xm=xm, xk=xk)
+
+        #Bohr radius
+        a0 = self.ureg("bohr").to_base_units()
+        self._ra = self._rk * self._rh**2 / (self._rm * self._re**2)
+        self._length_unit = self._ra*a0
+        #print(f"ra = {self._ra}")
+
+        # Hartree energy
+        eh = self.ureg("hartree").to("J")
+        self._ren = self._rm*self._re**4/((self._rk*self._rh)**2)
+        self._energy_unit = self._ren*eh
+        #print(f"ren = {self._ren}")
+
+        # Velocity
+        avu = (a0*eh/self.ureg("hbar")).to("m/s") #atomic velovity unit
+        self._rv = self._ra * self._ren / self._rh
+        self._velocity_unit = self._rv*avu
+        #print(f"rv = {self._rv}")
+
+        # Time
+        ta=(self.ureg("hbar")/eh).to("s")
+        self._rt = self._rh / self._ren
+        self._time_unit = self._rt*ta
+        #print(f"rt = {self._rt}")
+
+        self._frequency_unit = (1.0 / self._time_unit).to(self.ureg.hertz)
+        self._speed_of_light = (self.ureg("speed_of_light").to("m/s") / self._velocity_unit).magnitude
+        self._electric_field_unit = (self._energy_unit / (self.charge_unit * self._length_unit)).to(self.ureg.volt / self.ureg.meter)
+        self._electric_potential_unit = (self._energy_unit / self.charge_unit).to(self.ureg.volt)
+        self._wavenumber = 2*math.pi/self._length_unit
+
+        self._ralpha = self._re**2 / (self._rk * self._rh * self._rv)
+        #print(f"ralpha = {self._ralpha}")
+        if not math.isclose(self._ralpha, 1.0, rel_tol=1e-12):
+            raise ValueError(f"Fine structure constant is not correct: {self._ralpha} != {1}")
+
+    @property
+    def length_unit(self) -> pint.Quantity:
+        """Get the length unit."""
+        return self._length_unit
+
+    @property
+    def energy_unit(self) -> pint.Quantity:
+        """Get the energy unit."""
+        return self._energy_unit
+    
+    @property
+    def time_unit(self) -> pint.Quantity:
+        """Get the time unit."""
+        return self._time_unit
+
+    @property
+    def frequency_unit(self) -> pint.Quantity:
+        """Get the frequency unit."""
+        return self._frequency_unit
+
+    @property
+    def velocity_unit(self) -> pint.Quantity:
+        """Get the velocity unit."""
+        return self._velocity_unit
+    
+    @property
+    def speed_of_light(self) -> float:
+        """Get the speed of light."""
+        return self._speed_of_light
+
+    @property
+    def electric_field_unit(self) -> pint.Quantity:
+        """Get the electric field unit."""
+        return self._electric_field_unit
+
+    @property
+    def electric_potential_unit(self) -> pint.Quantity:
+        """Get the electric potential unit."""
+        return self._electric_potential_unit
+    
+    @property
+    def wavenumber_unit(self) -> pint.Quantity:
+        """Get the wavenumber unit."""
+        return self._wavenumber
+
+    def __str__(self) -> str:
+        """String representation of the atomic units."""
+        return (f"{super().__str__()}\n"
+                f"Derived units in this rescaled atomic unit system:\n"
+                f"- length unit := \t{self.length_unit}\n"
+                f"- energy unit := \t{self.energy_unit}\n"
+                f"- time unit := \t{self.time_unit}\n"
+                f"- frequency unit := \t{self.frequency_unit}\n"
+                f"- velocity unit := \t{self.velocity_unit}\n"
+                f"- speed of light := \t{self.speed_of_light}\n"
+                f"- electric field unit := \t{self.electric_field_unit}\n"
+                f"- electric potential unit := \t{self.electric_potential_unit}\n")
