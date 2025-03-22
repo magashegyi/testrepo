@@ -162,17 +162,17 @@ class AtomicBaseUnits:
         #         f"- modified permittivity := \t{self.k0}\n")
 
     @property
-    def hbar(self) -> float:
+    def hb(self) -> float:
         """Get the magnitede of the modified planck constant in this rescaled atomic units."""
         return self._xh
     
     @property
-    def e(self) -> float:
+    def e0(self) -> float:
         """Get the magnitude of the elementary charge in this rescaled atomic units."""
         return self._xe
     
     @property
-    def m(self) -> float:
+    def me(self) -> float:
         """Get the magnitude of the electron mass in this rescaled atomic units."""
         return self._xm
     
@@ -327,3 +327,5 @@ class AtomicUnitSystem(AtomicBaseUnits):
                 f"- speed of light := \t{self.speed_of_light}\n"
                 f"- electric field unit := \t{self.electric_field_unit}\n"
                 f"- electric potential unit := \t{self.electric_potential_unit}\n")
+    
+hartree_atomic_unit_system = AtomicUnitSystem(base_units=hartree_atomic_base_units)
