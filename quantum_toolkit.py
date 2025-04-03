@@ -85,7 +85,7 @@ def probability_current(state: Wavefunction):
 #     def __call__(self) -> float:
 #         return self.__t
 
-def const_t(dx: float,hbar: float=hartree_atomic_units.hbar,m: float=hartree_atomic_units.m) -> float:
+def const_t(dx: float,hbar: float=hartree_atomic_units.hb,m: float=hartree_atomic_units.me) -> float:
     return (hbar**2)/(2*m*(dx**2))
 
 # def const_t(hb: float,p: Particle):
@@ -108,8 +108,8 @@ Attributes:
 class Dispersion:
 
     def __init__(self,unified_step_size: float,\
-                  hbar: float = hartree_atomic_units.hbar,\
-                  mass: float = hartree_atomic_units.m):
+                  hbar: float = hartree_atomic_units.hb,\
+                  mass: float = hartree_atomic_units.me):
 
         self.__hbar=hbar
         self.__step_size=unified_step_size
@@ -282,8 +282,8 @@ class HamiltonOperator:
         return self.__xgrid
     
 def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
-                mass=hartree_atomic_units.m,\
-                hbar=hartree_atomic_units.hbar,\
+                mass=hartree_atomic_units.me,\
+                hbar=hartree_atomic_units.hb,\
                 param_x0 = None, param_lambda0 = 0.05,\
                 param_theta0 = 0.4 ):
 
@@ -512,9 +512,9 @@ Attributes:
 class SplitTimeEvolutionCalculator:
     def __init__(self,psi0_omega: float, psi0_initial: Wavefunction,\
                  scalarpot=pots.ZeroPotential,vectorpot=pots.ZeroPotential,\
-                 me=hartree_atomic_units.m,\
-                 hbar=hartree_atomic_units.hbar,\
-                 charge=hartree_atomic_units.e,\
+                 me=hartree_atomic_units.me,\
+                 hbar=hartree_atomic_units.hb,\
+                 charge=hartree_atomic_units.e0,\
                  dt=0.01, t_start=0.0, t_stop=1.0, save_interval=0.1,\
                  mask: Optional[np.ndarray] = None,
                  vcap = None):
