@@ -495,33 +495,74 @@ class SplitBoundary:
         B = h1 @ psi0_at_time
         return B
 
-"""Class for calculating the time evolution of a wavefunction using split operator methods.
 
-Attributes:
-    psi0_omega (float): The angular frequency of the initial wavefunction.
-    psi0_initial (Wavefunction): The initial wavefunction.
-    scalarpot (function): The scalar potential function.
-    vectorpot (function): The vector potential function.
-    me (float): The mass of the particle.
-    hbar (float): The reduced Planck constant.
-    charge (float): The charge of the particle.
-    dt (float): The time step size.
-    t_start (float): The initial time.
-    t_stop (float): The final time.
-"""
 class SplitTimeEvolutionCalculator:
-    def __init__(self,psi0_omega: float, psi0_initial: Wavefunction,\
+    """
+    Class for calculating the time evolution of a wavefunction using split operator methods.
+    Attributes:
+        psi0_omega (float): The angular frequency of the initial wavefunction.
+        psi0_initial (Wavefunction): The initial wavefunction.
+        scalarpot (function): The scalar potential function.
+        vectorpot (function): The vector potential function.
+        me (float): The mass of the particle.
+        hbar (float): The reduced Planck constant.
+        charge (float): The charge of the particle.
+        dt (float): The time step size.
+        t_start (float): The initial time.
+        t_stop (float): The final time.
+        save_interval (float): The interval at which to save the results.
+        mask (Optional[np.ndarray]): A boolean mask array to apply to the grid and value of the wavefunction. If None, no mask is applied.
+        vcap (Optional[np.ndarray]): The complex absorbing potential array. If None, a default complex absorbing potential is generated using `vcap_generator`.
+    """
+    def __init__(self, psi0_omega: float, psi0_initial: Wavefunction,\
+                 psi1_initial: Wavefunction = None,\
                  scalarpot=pots.ZeroPotential,vectorpot=pots.ZeroPotential,\
                  me=hartree_atomic_units.me,\
                  hbar=hartree_atomic_units.hb,\
                  charge=hartree_atomic_units.e0,\
                  dt=0.01, t_start=0.0, t_stop=1.0, save_interval=0.1,\
-                 mask: Optional[np.ndarray] = None,
-                 vcap = None):
-        
+                 mask: Optional[np.ndarray] = None, vcap = None):
+        """
+        Initialize the SplitTimeEvolutionCalculator.
+
+        Parameters:
+        -----------
+        psi0_omega : float
+            The angular frequency of the initial wavefunction.
+        psi0_initial : Wavefunction
+            The initial wavefunction.
+        scalarpot : function
+            The scalar potential function.
+        vectorpot : function
+            The vector potential function.
+        me : float
+            The mass of the particle.
+        hbar : float
+            The reduced Planck constant.
+        charge : float
+            The charge of the particle.
+        dt : float
+            The time step size.
+        t_start : float
+            The initial time.
+        t_stop : float
+            The final time.
+        save_interval : float
+            The interval at which to save the results.
+        mask : Optional[np.ndarray], optional
+            A boolean mask array to apply to the grid and value of the wavefunction. If None, no mask is applied.
+        vcap : Optional[np.ndarray], optional
+            The complex absorbing potential array. If None, a default complex absorbing potential is generated using `vcap_generator`.
+        """
+
         self.__psi0_omega=psi0_omega
         self.__psi0_initial=psi0_initial
+        self.__psi1_initial=psi1_initial
         self.__utgrid=np.arange(t_start,t_stop,dt)
+
+        if not hasattr(scalarpot, 'grid'):
+            raise AttributeError("The scalar potential object must have a 'grid' attribute.")
+        
         self.__uxgrid=scalarpot.grid #psi1_initial["grid"]
         zeropot=pots.ZeroPotential(self.__uxgrid)
         self.__save_interval = save_interval
@@ -541,11 +582,15 @@ class SplitTimeEvolutionCalculator:
             self.v_cap=vcap_generator(self.__uxgrid)
         else:
             self.v_cap=vcap
-        hham.vcap(self.v_cap)
+        if mask is not None:
+            self.__masked_nx = len(self.__uxgrid[mask])
+        else:
+            self.__masked_nx = 0
 
         self.__masked_nx=len(self.__uxgrid[mask])
         self.__nx=len(self.__uxgrid)
         self.__nt=len(self.__utgrid)
+
         if mask is None:
             self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
                                             dtype=np.complex128)
@@ -571,7 +616,11 @@ class SplitTimeEvolutionCalculator:
             self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
                                             self.__utgrid, self.__psi0_initial)
 
-            self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
+            if self.__psi1_initial is not None:
+                self.__psi1_time_evolution[:,0]=self.__psi1_initial["value"]
+            else:
+                self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
+
             for i in range(1,self.__nt):
                 self.__psi1_time_evolution[:,i]=self.__solver.step_one()
 
@@ -579,7 +628,10 @@ class SplitTimeEvolutionCalculator:
             self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
                                             self.__utgrid, self.__psi0_initial, self.__mask)
 
-            self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
+            if self.__psi1_initial is not None:
+                self.__psi1_time_evolution[:,0]=self.__psi1_initial["value"][self.__mask]
+            else:
+                self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
             for i in range(1,self.__nt):
                 self.__psi1_time_evolution[:,i]=self.__solver.step_one()[self.__mask]
 
