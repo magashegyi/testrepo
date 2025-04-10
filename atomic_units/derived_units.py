@@ -72,23 +72,28 @@ class AtomicUnitSystem(AtomicBaseUnits):
                 raise ValueError("All units must be provided if base_units is not used")
             super().__init__(xh=xh, xe=xe, xm=xm, xk=xk)
 
-        #Bohr radius
+        #Bohr radius -> atomic length unit
         a0 = self.ureg("bohr").to_base_units()
         self._ra = self._rk * self._rh**2 / (self._rm * self._re**2)
         self._length_unit = self._ra*a0
         #print(f"ra = {self._ra}")
 
-        # Hartree energy
+        # Hartree energy -> atomic energy unit
         eh = self.ureg("hartree").to("J")
-        self._ren = self._rm*self._re**4/((self._rk*self._rh)**2)
+        #self._ren = self._rm*self._re**4/((self._rk*self._rh)**2)
+        self._ren = self._rh**2 / (self._rm * self._ra**2)
         self._energy_unit = self._ren*eh
         #print(f"ren = {self._ren}")
 
-        # Velocity
+        # Velocity -> atomic velocity unit
+        # a0 = (κ_0 * ħ^2) / (m_e * e_0^2)
         avu = (a0*eh/self.ureg("hbar")).to("m/s") #atomic velovity unit
         self._rv = self._ra * self._ren / self._rh
         self._velocity_unit = self._rv*avu
         #print(f"rv = {self._rv}")
+
+        # Speed of light
+        self._speed_of_light = (self.ureg("speed_of_light").to("m/s") / self._velocity_unit.to("m/s")).magnitude
 
         # Time
         ta=(self.ureg("hbar")/eh).to("s")
@@ -97,10 +102,9 @@ class AtomicUnitSystem(AtomicBaseUnits):
         #print(f"rt = {self._rt}")
 
         self._frequency_unit = (1.0 / self._time_unit).to(self.ureg.hertz)
-        self._speed_of_light = (self.ureg("speed_of_light").to("m/s") / self._velocity_unit).magnitude
         self._electric_field_unit = (self._energy_unit / (self.charge_unit * self._length_unit)).to(self.ureg.volt / self.ureg.meter)
         self._electric_potential_unit = (self._energy_unit / self.charge_unit).to(self.ureg.volt)
-        self._wavenumber = 2*math.pi/self._length_unit
+        self._wavenumber_unit = (2.0*math.pi / self._length_unit).to(self.ureg("1/m"))
 
         self._ralpha = self._re**2 / (self._rk * self._rh * self._rv)
         #print(f"ralpha = {self._ralpha}")
@@ -133,6 +137,11 @@ class AtomicUnitSystem(AtomicBaseUnits):
         return self._velocity_unit
     
     @property
+    def wavenumber_unit(self) -> pint.Quantity:
+        """Get the wavenumber unit."""
+        return self._wavenumber_unit
+    
+    @property
     def speed_of_light(self) -> float:
         """Get the speed of light."""
         return self._speed_of_light
@@ -146,11 +155,6 @@ class AtomicUnitSystem(AtomicBaseUnits):
     def electric_potential_unit(self) -> pint.Quantity:
         """Get the electric potential unit."""
         return self._electric_potential_unit
-    
-    @property
-    def wavenumber_unit(self) -> pint.Quantity:
-        """Get the wavenumber unit."""
-        return self._wavenumber
 
     def __str__(self) -> str:
         """String representation of the atomic units."""

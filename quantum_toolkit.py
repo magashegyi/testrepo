@@ -35,6 +35,18 @@ class Particle(TypedDict):
     wavenumber: float
     state: Wavefunction
 
+def zero_wave_function(grid: np.array) -> Wavefunction:
+    """
+    Generate a zero wavefunction.
+
+    Parameters:
+    grid (np.array): The spatial grid.
+
+    Returns:
+    Wavefunction: The zero wavefunction.
+    """
+    return Wavefunction(grid=grid, value=np.zeros_like(grid, dtype=np.complex128))
+
 def plane_wave(k: float, grid: np.array) -> Wavefunction:
     """
     Generate a plane wave function.
@@ -47,6 +59,21 @@ def plane_wave(k: float, grid: np.array) -> Wavefunction:
     Wavefunction: The plane wave function.
     """
     return Wavefunction(grid=grid, value=np.exp(1j*k*grid))
+
+def gaussian_wavepacket(x0: float, p0: float, sigma: float, grid: np.array) -> Wavefunction:
+    """
+    Generate a Gaussian wave packet.
+
+    Parameters:
+    x0 (float): The initial position of the wave packet.
+    p0 (float): The initial momentum of the wave packet.
+    sigma (float): The width of the wave packet.
+    grid (np.array): The spatial grid.
+
+    Returns:
+    Wavefunction: The Gaussian wave packet.
+    """
+    return Wavefunction(grid=grid, value=(1/(sigma*np.sqrt(2*np.pi)))*np.exp(-((grid-x0)**2)/(2*sigma**2))*np.exp(1j*p0*grid))
 
 def mask_wavefunction(wavefunction: Wavefunction, mask: np.ndarray) -> Wavefunction:
     """
@@ -480,6 +507,9 @@ class SplitBoundary:
         self.__psi0_initial=psi0["value"]
         self.__omega=omega
 
+    def ham1(self,time):
+        return self.__hham(time)-self.__h0ham(time)
+
     """Calculate the boundary condition at a given time.
 
     Args:
@@ -557,7 +587,7 @@ class SplitTimeEvolutionCalculator:
 
         self.__psi0_omega=psi0_omega
         self.__psi0_initial=psi0_initial
-        self.__psi1_initial=psi1_initial
+
         self.__utgrid=np.arange(t_start,t_stop,dt)
 
         if not hasattr(scalarpot, 'grid'):
@@ -582,6 +612,8 @@ class SplitTimeEvolutionCalculator:
             self.v_cap=vcap_generator(self.__uxgrid)
         else:
             self.v_cap=vcap
+        hham.vcap(self.v_cap)
+
         if mask is not None:
             self.__masked_nx = len(self.__uxgrid[mask])
         else:
@@ -591,6 +623,10 @@ class SplitTimeEvolutionCalculator:
         self.__nx=len(self.__uxgrid)
         self.__nt=len(self.__utgrid)
 
+        self.__psi1_initial=np.zeros(self.__nx,dtype=np.complex128)
+        if psi1_initial is not None:
+            self.__psi1_initial=np.array(psi1_initial["value"],dtype=np.complex128)
+
         if mask is None:
             self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
                                             dtype=np.complex128)
@@ -598,7 +634,7 @@ class SplitTimeEvolutionCalculator:
             self.__psi1_time_evolution=np.zeros((self.__masked_nx,self.__nt),\
                                             dtype=np.complex128)   
 
-        self.__solver=CntdSes(np.zeros(self.__nx,dtype=np.complex128), hham,dt=dt)
+        self.__solver=CntdSes(self.__psi1_initial, hham,dt=dt)
         sb=SplitBoundary( hham2h1, h0ham2h1, psi0_initial,psi0_omega)
         self.__solver.boundary = sb
 
@@ -617,7 +653,8 @@ class SplitTimeEvolutionCalculator:
                                             self.__utgrid, self.__psi0_initial)
 
             if self.__psi1_initial is not None:
-                self.__psi1_time_evolution[:,0]=self.__psi1_initial["value"]
+                #print(self.__psi1_time_evolution.shape[0],self.__psi1_initial.shape[0])
+                self.__psi1_time_evolution[:,0]=self.__psi1_initial
             else:
                 self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
 
@@ -629,7 +666,7 @@ class SplitTimeEvolutionCalculator:
                                             self.__utgrid, self.__psi0_initial, self.__mask)
 
             if self.__psi1_initial is not None:
-                self.__psi1_time_evolution[:,0]=self.__psi1_initial["value"][self.__mask]
+                self.__psi1_time_evolution[:,0]=self.__psi1_initial[self.__mask]
             else:
                 self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
             for i in range(1,self.__nt):
@@ -647,3 +684,7 @@ class SplitTimeEvolutionCalculator:
     def psi_time_evolution(self):
         self.__psi = self.__psi1_time_evolution + self.__psi0_time_evolution["value"]
         return Wavefunction(grid=self.__uxgrid,value=self.__psi)
+    
+    @property
+    def boundary(self):
+        return self.__solver.boundary

@@ -310,6 +310,11 @@ class SmoothLaserPotential(Potential):
         self.__spatial_width = spatial_max - spatial_min
         self.__spatial_grid = spatial_grid
 
+        self.__jumps = [
+            (self.__spatial_min, 1, beta),  # Upward jump at x=xmin, height=1, uses beta from variable
+            (self.__spatial_max, -1, beta) # downward jump at x=xmax, height=-1, uses beta from variable
+        ]
+
         self.__temporal_min = temporal_min
         self.__temporal_max = temporal_max
         self.__temporal_width = temporal_max - temporal_min
@@ -318,16 +323,13 @@ class SmoothLaserPotential(Potential):
         self.__noc = noc
         self.__cep = cep
 
-        self.__beta = beta
+        #self.__beta = beta
 
         self.__omega0 = self.__noc * 2.0 * np.pi / self.__temporal_width
     
     def __call__(self, t: float) -> np.array:
-        jumps = [
-            (self.__spatial_min, 1, self.__beta),  # Upward jump at x=xmin, height=1, uses beta from variable
-            (self.__spatial_max, -1, self.__beta) # downward jump at x=xmax, height=-1, uses beta from variable
-        ]
-        lp_x = self.__amplitude * smooth_jumper(self.__spatial_grid, jumps)
+
+        lp_x = self.__amplitude * smooth_jumper(self.__spatial_grid, self.__jumps)
 
         lp_envelope = (np.heaviside(t, 1) - np.heaviside(t - self.__temporal_width, 1)) * pow(np.cos((np.pi / self.__temporal_width) * (t - 0.5 * self.__temporal_width)), 2)
         lp_t = lp_envelope * np.cos(self.__omega0 * (t - 0.5 * self.__temporal_width) + self.__cep)
@@ -337,8 +339,9 @@ class SmoothLaserPotential(Potential):
         return laserpot
 
     def value_at(self, x: float, t: float) -> float:
-        lp_x = self.__amplitude * (np.heaviside(x - self.__spatial_min * np.ones_like(x), 1) - np.heaviside(x - self.__spatial_max * np.ones_like(x), 1))
+        #lp_x = self.__amplitude * (np.heaviside(x - self.__spatial_min * np.ones_like(x), 1) - np.heaviside(x - self.__spatial_max * np.ones_like(x), 1))
 
+        lp_x = self.__amplitude * smooth_jumper(x, self.__jumps)
         lp_envelope = (np.heaviside(t, 1) - np.heaviside(t - self.__temporal_width, 1)) * pow(np.cos((np.pi / self.__temporal_width) * (t - 0.5 * self.__temporal_width)), 2)
         lp_t = lp_envelope * np.cos(self.__omega0 * (t - 0.5 * self.__temporal_width) + self.__cep)
 
