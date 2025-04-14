@@ -155,6 +155,15 @@ class AtomicUnitSystem(AtomicBaseUnits):
     def electric_potential_unit(self) -> pint.Quantity:
         """Get the electric potential unit."""
         return self._electric_potential_unit
+    
+    @property
+    def fine_structure_constant(self) -> float:
+        """Get the fine structure constant."""
+        return self._ralpha
+    @property
+    def fine_structure_constant_inverse(self) -> float:
+        """Get the inverse of the fine structure constant."""
+        return 1.0 / self._ralpha
 
     def __str__(self) -> str:
         """String representation of the atomic units."""
