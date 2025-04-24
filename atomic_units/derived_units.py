@@ -61,7 +61,7 @@ class AtomicUnitSystem(AtomicBaseUnits):
         :param xh: Value of modified planck constant (hbar) in this atomic units.
         :param xe: Value of elementary charge (xe) in this atomic units.
         :param xm: Value of electron mass (xm) in this atomic units.
-        :param k0: Value of modified permittivity kappa0 = 4*Pi*epsilon0 in this atomic units.
+        :param xk: Value of modified permittivity kappa0 = 4*Pi*epsilon0 in this atomic units.
         :param base_units: An instance of AtomicBaseUnits.
         """
         
@@ -72,44 +72,76 @@ class AtomicUnitSystem(AtomicBaseUnits):
                 raise ValueError("All units must be provided if base_units is not used")
             super().__init__(xh=xh, xe=xe, xm=xm, xk=xk)
 
+        self._calculate_length_unit()
+        self._calculate_energy_unit()
+        self._calculate_velocity_unit()
+        self._calculate_time_unit()
+        self._calculate_frequency_unit()
+        self._calculate_wavenumber_unit()
+        self._calculate_electric_field_unit()
+        self._calculate_electric_potential_unit()
+        self._calculate_speed_of_light()
+        self._calculate_fine_structure_constant()
+
+        # Check if the fine structure constant is correct
+        if not math.isclose(self._ralpha, 1.0, rel_tol=1e-12):
+            raise ValueError(f"Fine structure constant is not correct: {self._ralpha} != {1}")
+        
+    def _calculate_length_unit(self):
         #Bohr radius -> atomic length unit
         a0 = self.ureg("bohr").to_base_units()
         self._ra = self._rk * self._rh**2 / (self._rm * self._re**2)
         self._length_unit = self._ra*a0
-        #print(f"ra = {self._ra}")
 
+    def _calculate_energy_unit(self):
         # Hartree energy -> atomic energy unit
         eh = self.ureg("hartree").to("J")
         #self._ren = self._rm*self._re**4/((self._rk*self._rh)**2)
         self._ren = self._rh**2 / (self._rm * self._ra**2)
         self._energy_unit = self._ren*eh
-        #print(f"ren = {self._ren}")
-
+ 
+    def _calculate_velocity_unit(self):
         # Velocity -> atomic velocity unit
         # a0 = (κ_0 * ħ^2) / (m_e * e_0^2)
+        a0 = self.ureg("bohr").to_base_units()
+        eh = self.ureg("hartree").to("J")
         avu = (a0*eh/self.ureg("hbar")).to("m/s") #atomic velovity unit
         self._rv = self._ra * self._ren / self._rh
         self._velocity_unit = self._rv*avu
-        #print(f"rv = {self._rv}")
 
-        # Speed of light
-        self._speed_of_light = (self.ureg("speed_of_light").to("m/s") / self._velocity_unit.to("m/s")).magnitude
-
+    def _calculate_time_unit(self):
         # Time
+        eh = self.ureg("hartree").to("J")
         ta=(self.ureg("hbar")/eh).to("s")
         self._rt = self._rh / self._ren
         self._time_unit = self._rt*ta
-        #print(f"rt = {self._rt}")
 
+    def _calculate_frequency_unit(self):
+        # Frequency
         self._frequency_unit = (1.0 / self._time_unit).to(self.ureg.hertz)
-        self._electric_field_unit = (self._energy_unit / (self.charge_unit * self._length_unit)).to(self.ureg.volt / self.ureg.meter)
-        self._electric_potential_unit = (self._energy_unit / self.charge_unit).to(self.ureg.volt)
+
+    def _calculate_wavenumber_unit(self):
+        # Wavenumber
         self._wavenumber_unit = (2.0*math.pi / self._length_unit).to(self.ureg("1/m"))
 
+    def _calculate_electric_field_unit(self):
+        # Electric field unit
+        self._electric_field_unit = (self._energy_unit / (self.charge_unit * self.length_unit)).to(self.ureg.volt / self.ureg.meter)
+    
+    def _calculate_electric_potential_unit(self):
+        # Electric potential unit
+        self._electric_potential_unit = (self._energy_unit / self.charge_unit).to(self.ureg.volt)
+
+    def _calculate_speed_of_light(self):
+        # Speed of light
+        self._speed_of_light = (self.ureg("speed_of_light").to("m/s") / self._velocity_unit.to("m/s")).magnitude
+        #print(f"Speed of light = {self._speed_of_light}")
+
+    def _calculate_fine_structure_constant(self):
+        # Fine structure constant
         self._ralpha = self._re**2 / (self._rk * self._rh * self._rv)
         #print(f"ralpha = {self._ralpha}")
-        if not math.isclose(self._ralpha, 1.0, rel_tol=1e-12):
-            raise ValueError(f"Fine structure constant is not correct: {self._ralpha} != {1}")
+        
 
     @property
     def length_unit(self) -> pint.Quantity:
@@ -157,9 +189,27 @@ class AtomicUnitSystem(AtomicBaseUnits):
         return self._electric_potential_unit
     
     @property
-    def fine_structure_constant(self) -> float:
+    def fine_structure_constant(self) -> pint.Quantity:
         """Get the fine structure constant."""
-        return self._ralpha
+        return self._ralpha*self.ureg("fine_structure_constant").to_base_units()
+    
+    def convert_length_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.length_unit.to(unit)).magnitude
+    
+    def convert_energy_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.energy_unit.to(unit)).magnitude
+
+    def convert_time_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.time_unit.to(unit)).magnitude
+    
+    def from_nm(self) -> float:
+        """
+        Converts a length value from nanometers (nm) to the base unit.
+
+        Returns:
+            float: The length value converted from nanometers to the base unit.
+        """
+        return self.convert_length_from("nm")
 
     def __str__(self) -> str:
         """String representation of the atomic units."""

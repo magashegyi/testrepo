@@ -9,26 +9,27 @@ import scipy.sparse as sparse
 from typing import TypedDict, Optional
 import potentials as pots
 from atomic_units import hartree_atomic_base_units as hartree_atomic_units
+from utils.smooth_utils import smoothing1D
 
-"""Class representing a wavefunction in quantum mechanics.
-
-Attributes:
-    grid (np.array): The spatial grid.
-    value (np.array): The wavefunction values on the grid.
-"""
 class Wavefunction(TypedDict):
+    """Class representing a wavefunction in quantum mechanics.
+
+    Attributes:
+        grid (np.array): The spatial grid.
+        value (np.array): The wavefunction values on the grid.
+    """
     grid: np.array
     value: np.array
 
-"""Class representing a particle in quantum mechanics.
-
-Attributes:
-    charge (float): The charge of the particle.
-    mass (float): The mass of the particle.
-    wavenumber (float): The wavenumber of the particle.
-    state (Wavefunction): The wavefunction representing the state of the particle.
-"""
 class Particle(TypedDict):
+    """Class representing a particle in quantum mechanics.
+
+    Attributes:
+        charge (float): The charge of the particle.
+        mass (float): The mass of the particle.
+        wavenumber (float): The wavenumber of the particle.
+        state (Wavefunction): The wavefunction representing the state of the particle.
+    """
     charge: float
     mass: float
     angular_frequency: float

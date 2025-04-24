@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod # abstract base class
+from utils.smooth_utils import smoothing1D, smooth_jumper
 
 class Potential(ABC):
     """Abstract base class for potentials.
@@ -124,8 +125,6 @@ class StackPotential(Potential):
 #     lx=(x-a)/(b-a)
 #     return (1-smoothing1D_phi(lx,psi))*f(x)+smoothing1D_phi(lx,psi)*g(x)
 
-
-from smooth_utils import smoothing1D
 
 class SmoothStackPotential(Potential):
     """Generates a smooth stack potential profile with customizable well and wall properties.
@@ -287,8 +286,6 @@ class LaserPotential(Potential):
     @property
     def spatial_max(self) -> float:
         return self.__spatial_max
-
-from smooth_utils import smooth_jumper
 
 class SmoothLaserPotential(Potential):
     """Class representing a smooth laser potential.
