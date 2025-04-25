@@ -1,0 +1,50 @@
+from scipy.optimize import minimize
+import atomic_units as au
+import numpy as np
+
+def ct_calculator(en, dpl):
+    """
+    Calculate the ct value based on energy, desired points in lambda, and grid step size.
+
+    Parameters:
+    energy (float): Energy in eV.
+    desired_points_in_lamda (int): Desired points in lambda.
+    dx (float): Grid step size in the unit system.
+
+    Returns:
+    float: Calculated ct value.
+    """
+    return en / (2 * (1 - np.cos(2 * np.pi / dpl)))
+
+def optimize_atomic_units(dx, emax, desired_points_in_lamda, desired_width):
+    """
+    Optimize atomic unit parameters to minimize errors in prefactor and width.
+
+    Parameters:
+    dx (float): Grid step size in the unit system.
+    emax (float): Maximum electron energy in eV.
+    desired_width (float): Desired width in nm.
+
+    Returns:
+    dict: Optimization results including optimized parameters and objective value.
+    """
+    desired_ct = ct_calculator(emax, desired_points_in_lamda)
+
+    def objective_function(x):
+        hb, m0, k0, xe = x
+        usys = au.AtomicUnitSystem(xh=hb, xe=xe, xm=m0, xk=k0)
+
+        desired_width_in_nm = desired_width * usys.ureg("nm")
+        width_in_nm = 16 * 1024 * dx * usys.length_unit.to("nm")
+        delta_width = (abs(width_in_nm - desired_width_in_nm) / desired_width_in_nm).magnitude
+
+        ct = (hb**2) / (2 * m0 * dx**2)
+        delta_ct = abs(ct - desired_ct) / desired_ct
+
+        return delta_ct**2 + delta_width**2
+
+    result = minimize(objective_function, [1, 1, 1, 1], bounds=((1, 10000), (1, 10000), (1, 1000), (1, 1000)), method="L-BFGS-B")
+    return {
+        "optimized_parameters": result.x,
+        "objective_value": result.fun
+    }
