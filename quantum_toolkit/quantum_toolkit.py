@@ -5,11 +5,11 @@
 
 import numpy as np
 import scipy.sparse as sparse
+from . import potentials as pots
 #from abc import ABC, abstractmethod # abstract base class
 from typing import TypedDict, Optional
-import potentials as pots
 from atomic_units import hartree_atomic_base_units as hartree_atomic_units
-from utils.smooth_utils import smoothing1D
+#from utils.smooth_utils import smoothing1D
 
 class Wavefunction(TypedDict):
     """Class representing a wavefunction in quantum mechanics.
