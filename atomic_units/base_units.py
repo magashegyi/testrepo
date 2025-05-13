@@ -154,3 +154,6 @@ class AtomicBaseUnits:
     def permittivity_unit(self) -> pint.Quantity:
         """Get the permittivity unit."""
         return self._permittivity_unit 
+    
+    def convert_mass_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.mass_unit.to(unit)).magnitude

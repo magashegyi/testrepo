@@ -122,7 +122,8 @@ class AtomicUnitSystem(AtomicBaseUnits):
 
     def _calculate_wavenumber_unit(self):
         # Wavenumber
-        self._wavenumber_unit = (2.0*math.pi / self._length_unit).to(self.ureg("1/m"))
+        #self._wavenumber_unit = (2.0*math.pi / self._length_unit).to(self.ureg("1/m"))
+        self._wavenumber_unit = (1.0 / self._length_unit).to(self.ureg("1/m"))
 
     def _calculate_electric_field_unit(self):
         # Electric field unit
@@ -202,14 +203,11 @@ class AtomicUnitSystem(AtomicBaseUnits):
     def convert_time_from(self, unit: str) -> float:
         return (self.ureg(unit)/self.time_unit.to(unit)).magnitude
     
-    def from_nm(self) -> float:
-        """
-        Converts a length value from nanometers (nm) to the base unit.
+    def convert_electric_field_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.electric_field_unit.to(unit)).magnitude
 
-        Returns:
-            float: The length value converted from nanometers to the base unit.
-        """
-        return self.convert_length_from("nm")
+    def convert_wavenumber_from(self, unit: str) -> float:
+        return (self.ureg(unit)/self.wavenumber_unit.to(unit)).magnitude
 
     def __str__(self) -> str:
         """String representation of the atomic units."""
