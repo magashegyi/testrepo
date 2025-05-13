@@ -13,8 +13,8 @@ class QuasiParticle(qtk.Particle,TypedDict):
 
 def retarded_green_function(ein: float,ham: qtk.HamiltonOperator):
     
-    disp=qtk.Dispersion(ham.stepsize,ham.hbar,ham.mass)
-    kin=disp.energy2k(ein)
+    disp=qtk.CosineDispersion(ham.stepsize,ham.hbar,ham.mass)
+    kin=disp.wavenumber(ein)
 
     ham0 = ham(0).toarray()
 
@@ -331,7 +331,7 @@ def normed_states_at_given_energy2(ein: float,kin: float,ham: qtk.HamiltonOperat
     else:
         return nstatepk, nstatemk
 
-def quasiparticles_at_given_energy(ein: float,kin: float,ham: qtk.HamiltonOperator, return_green=False, normed=True):
+def quasiparticles_at_given_energy(ein: float, kin: float, ham: qtk.HamiltonOperator, return_green=False, normed=True):
 
     if normed:
         statepk, statemk, green = normed_states_at_given_energy2(ein,kin,ham,return_green=True)

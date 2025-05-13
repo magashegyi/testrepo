@@ -10,6 +10,7 @@ from . import potentials as pots
 from typing import TypedDict, Optional
 from atomic_units import hartree_atomic_base_units as hartree_atomic_units
 #from utils.smooth_utils import smoothing1D
+from abc import ABC, abstractmethod
 
 class Wavefunction(TypedDict):
     """Class representing a wavefunction in quantum mechanics.
@@ -126,57 +127,150 @@ def const_t(dx: float,hbar: float=hartree_atomic_units.hb,m: float=hartree_atomi
 #     hbar=au.action
 #     return const_t(hbar,p)
 
-"""Class for calculating dispersion relations.
-
-Attributes:
-    unified_step_size (float): The step size for the calculations.
-    action (float): The action unit.
-    mass (float): The mass unit.
-"""
-class Dispersion:
-
-    def __init__(self,unified_step_size: float,\
-                  hbar: float = hartree_atomic_units.hb,\
-                  mass: float = hartree_atomic_units.me):
-
-        self.__hbar=hbar
-        self.__step_size=unified_step_size
-        self.__t=const_t(unified_step_size,hbar,mass)
-
-    """Convert energy to wave number (k).
-
-    Args:
-        energy (float): The energy value.
-
-    Returns:
-        float: The corresponding wave number (k).
+class BaseDispersion(ABC):
     """
-    def energy2k(self,energy: float) -> float:
-        k=(1/self.__step_size)*np.arccos(1-(0.5*energy/self.__t))
-        return k
+    Abstract base class for dispersion relations.
+
+    Attributes:
+        params (dict): Generalized parameter dictionary for calculations.
+    """
+    def __init__(self, **params):
+        """
+        Initialize the BaseDispersion class with arbitrary parameters.
+
+        Parameters:
+        -----------
+        **params : dict
+            Arbitrary keyword arguments for initialization.
+        """
+        self.params = params
+
+    @abstractmethod
+    def wavenumber(self, energy: float) -> float:
+        """
+        Convert energy to wave number (k).
+
+        Parameters:
+        -----------
+        energy : float
+            The energy value.
+
+        Returns:
+        --------
+        float
+            The corresponding wave number (k).
+        """
+
+        if "wavenumber" in self.params:
+            return self.params["wavenumber"](energy, **self.params)
+        raise NotImplementedError("wavenumber function is not defined.")
+
+    @abstractmethod
+    def energy(self, wavenumber: float) -> float:
+        """Convert wave number to energy."""
+        pass
+
+    @abstractmethod
+    def angular_frequency(self, wavenumber: float) -> float:
+        """Convert wave number to angular frequency (omega)."""
+        pass
+
+
+class CosineDispersion(BaseDispersion):
+    """
+    Dispersion relation based on a cosine function.
+    """
+    def __init__(self, step_size: float, hbar: float, mass: float):
+        super().__init__(step_size=step_size, hbar=hbar, mass=mass)
+        self._t = (hbar**2) / (2 * mass * (step_size**2))
+
+    def wavenumber(self, energy: float) -> float:
+        step_size = self.params["step_size"]
+        return (1 / step_size) * np.arccos(1 - (0.5 * energy / self._t))
+
+    def energy(self, wavenumber: float) -> float:
+        step_size = self.params["step_size"]
+        return 2 * self._t * (1 - np.cos(wavenumber * step_size))
+
+    def angular_frequency(self, wavenumber: float) -> float:
+        hbar = self.params["hbar"]
+        return self.energy(wavenumber) / hbar
+
+
+class QuadraticDispersion(BaseDispersion):
+    """
+    Dispersion relation based on a quadratic function.
+    """
+    def __init__(self, hbar: float, mass: float):
+        super().__init__(hbar=hbar, mass=mass)
+
+    def wavenumber(self, energy: float) -> float:
+        hbar = self.params["hbar"]
+        mass = self.params["mass"]
+        #print(f"energy: {energy}, hbar: {hbar}, mass: {mass}")
+        print(f"wavenumber: {np.sqrt(2 * mass * energy) / hbar}")
+        return np.sqrt(2 * mass * energy) / hbar
+
+    def energy(self, wavenumber: float) -> float:
+        hbar = self.params["hbar"]
+        mass = self.params["mass"]
+        return (hbar**2 * wavenumber**2) / (2 * mass)
+
+    def angular_frequency(self, wavenumber: float) -> float:
+        hbar = self.params["hbar"]
+        return self.energy(wavenumber) / hbar
+
+# """Class for calculating dispersion relations.
+
+# Attributes:
+#     unified_step_size (float): The step size for the calculations.
+#     action (float): The action unit.
+#     mass (float): The mass unit.
+# """
+# class Dispersion:
+
+#     def __init__(self,unified_step_size: float,\
+#                   hbar: float = hartree_atomic_units.hb,\
+#                   mass: float = hartree_atomic_units.me):
+
+#         self.__hbar=hbar
+#         self.__step_size=unified_step_size
+#         self.__t=const_t(unified_step_size,hbar,mass)
+
+#     """Convert energy to wave number (k).
+
+#     Args:
+#         energy (float): The energy value.
+
+#     Returns:
+#         float: The corresponding wave number (k).
+#     """
+#     def energy2k(self,energy: float) -> float:
+#         k=(1/self.__step_size)*np.arccos(1-(0.5*energy/self.__t))
+#         return k
     
-    """Convert wave number (k) to energy.
+#     """Convert wave number (k) to energy.
 
-    Args:
-        k (float): The wave number.
+#     Args:
+#         k (float): The wave number.
 
-    Returns:
-        float: The corresponding energy.
-    """
-    def k2energy(self,k: float) -> float:
-        E=2*self.__t*(1-np.cos(k*self.__step_size))
-        return E
+#     Returns:
+#         float: The corresponding energy.
+#     """
+#     def k2energy(self,k: float) -> float:
+#         E=2*self.__t*(1-np.cos(k*self.__step_size))
+#         return E
     
-    """Convert wave number (k) to angular frequency (omega).
+#     """Convert wave number (k) to angular frequency (omega).
 
-    Args:
-        k (float): The wave number.
+#     Args:
+#         k (float): The wave number.
 
-    Returns:
-        float: The corresponding angular frequency.
-    """
-    def k2omega(self,k: float) -> float:
-        return self.k2energy(k)/self.__hbar
+#     Returns:
+#         float: The corresponding angular frequency.
+#     """
+#     def k2omega(self,k: float) -> float:
+#         return self.k2energy(k)/self.__hbar
 
 
 # def inverse_dispersion(k,dx=1,hbar=hartree_atomic_units["action"],m=hartree_atomic_units["mass"]):
@@ -689,3 +783,62 @@ class SplitTimeEvolutionCalculator:
     @property
     def boundary(self):
         return self.__solver.boundary
+
+# class BaseDispersion(ABC):
+#     """
+#     Abstract base class for dispersion relations.
+
+#     Attributes:
+#         step_size (float): The step size for the calculations.
+#         hbar (float): The reduced Planck constant.
+#         mass (float): The mass of the particle.
+#     """
+#     def __init__(self, step_size: float, hbar: float, mass: float):
+#         self._step_size = step_size
+#         self._hbar = hbar
+#         self._mass = mass
+
+#     @abstractmethod
+#     def energy2k(self, energy: float) -> float:
+#         """Convert energy to wave number (k)."""
+#         pass
+
+#     @abstractmethod
+#     def k2energy(self, k: float) -> float:
+#         """Convert wave number (k) to energy."""
+#         pass
+
+#     @abstractmethod
+#     def k2omega(self, k: float) -> float:
+#         """Convert wave number (k) to angular frequency (omega)."""
+#         pass
+
+# class CosineDispersion(BaseDispersion):
+#     """
+#     Dispersion relation based on a cosine function.
+#     """
+#     def __init__(self, step_size: float, hbar: float, mass: float):
+#         super().__init__(step_size, hbar, mass)
+#         self._t = (hbar**2) / (2 * mass * (step_size**2))
+
+#     def energy2k(self, energy: float) -> float:
+#         return (1 / self._step_size) * np.arccos(1 - (0.5 * energy / self._t))
+
+#     def k2energy(self, k: float) -> float:
+#         return 2 * self._t * (1 - np.cos(k * self._step_size))
+
+#     def k2omega(self, k: float) -> float:
+#         return self.k2energy(k) / self._hbar
+
+# class QuadraticDispersion(BaseDispersion):
+#     """
+#     Dispersion relation based on a quadratic function.
+#     """
+#     def energy2k(self, energy: float) -> float:
+#         return np.sqrt(2 * self._mass * energy) / self._hbar
+
+#     def k2energy(self, k: float) -> float:
+#         return (self._hbar**2 * k**2) / (2 * self._mass)
+
+#     def k2omega(self, k: float) -> float:
+#         return self.k2energy(k) / self._hbar
