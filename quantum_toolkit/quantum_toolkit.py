@@ -11,31 +11,68 @@ from typing import TypedDict, Optional
 from atomic_units import hartree_atomic_base_units as hartree_atomic_units
 #from utils.smooth_utils import smoothing1D
 from abc import ABC, abstractmethod
+import h5py
 
-class Wavefunction(TypedDict):
+class Wavefunction:
     """Class representing a wavefunction in quantum mechanics.
 
     Attributes:
         grid (np.array): The spatial grid.
         value (np.array): The wavefunction values on the grid.
     """
-    grid: np.array
-    value: np.array
+    def __init__(self, grid: np.array, value: np.array):
+        self.grid = grid
+        self.value = value
 
-class Particle(TypedDict):
+    def to_hdf5_group(self, group):
+        group.create_dataset("grid", data=self.grid)
+        group.create_dataset("value", data=self.value)
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        grid = group["grid"][()]
+        value = group["value"][()]
+        return cls(grid=grid, value=value)
+
+class Particle:
     """Class representing a particle in quantum mechanics.
 
     Attributes:
         charge (float): The charge of the particle.
         mass (float): The mass of the particle.
+        angular_frequency (float): The angular frequency of the particle.
         wavenumber (float): The wavenumber of the particle.
         state (Wavefunction): The wavefunction representing the state of the particle.
     """
-    charge: float
-    mass: float
-    angular_frequency: float
-    wavenumber: float
-    state: Wavefunction
+    def __init__(self, charge: float, mass: float, angular_frequency: float, wavenumber: float, state: Wavefunction):
+        self.charge = charge
+        self.mass = mass
+        self.angular_frequency = angular_frequency
+        self.wavenumber = wavenumber
+        self.state = state
+
+    def to_hdf5_group(self, group):
+        group.attrs["charge"] = self.charge
+        group.attrs["mass"] = self.mass
+        group.attrs["angular_frequency"] = self.angular_frequency
+        group.attrs["wavenumber"] = self.wavenumber
+        state_grp = group.create_group("state")
+        self.state.to_hdf5_group(state_grp)
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        charge = group.attrs["charge"]
+        mass = group.attrs["mass"]
+        angular_frequency = group.attrs["angular_frequency"]
+        wavenumber = group.attrs["wavenumber"]
+        state = Wavefunction.from_hdf5_group(group["state"])
+        return cls(
+            charge=charge,
+            mass=mass,
+            angular_frequency=angular_frequency,
+            wavenumber=wavenumber,
+            state=state
+        )
 
 def zero_wave_function(grid: np.array) -> Wavefunction:
     """
@@ -88,20 +125,36 @@ def mask_wavefunction(wavefunction: Wavefunction, mask: np.ndarray) -> Wavefunct
     Returns:
     Wavefunction: The masked wavefunction.
     """
-    masked_grid = wavefunction['grid'][mask]
-    masked_value = wavefunction['value'][mask]
+    masked_grid = wavefunction.grid[mask]
+    masked_value = wavefunction.value[mask]
     return Wavefunction(grid=masked_grid, value=masked_value)
 
 def probability_density(state: Wavefunction):
-    return (np.conj(state["value"])*state["value"]).real
+    return (np.conj(state.value)*state.value).real
 
 # def probability_current(state,dx):  
 #     return np.imag(np.conj(state) * np.gradient(state,dx,axis=0))
 
 def probability_current(state: Wavefunction):
-    grid=state["grid"]
+    grid=state.grid
     dx=grid[1]-grid[0]
-    return np.imag(np.conj(state["value"]) * np.gradient(state["value"],dx,axis=0))
+    return np.imag(np.conj(state.value) * np.gradient(state.value,dx,axis=0))
+
+def probability_current_at(state: Wavefunction, idx: int):
+    """
+    Valószínűségi áram számítása egy adott indexű pontban.
+
+    Paraméterek:
+    state (Wavefunction): Hullámfüggvény.
+    idx (int): A vizsgált pont indexe.
+
+    Visszatérési érték:
+    float: Valószínűségi áram az adott pontban.
+    """
+    grid = state.grid
+    dx = grid[1] - grid[0]
+    grad = np.gradient(state.value, dx, axis=0)
+    return np.imag(np.conj(state.value[idx]) * grad[idx])
 
 # class ConstT:
 
@@ -471,20 +524,20 @@ def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefun
     """
 
     if mask is None:
-        nx=len(eigenstate["grid"])
+        nx=len(eigenstate.grid)
         nt=len(times)
         psi = np.zeros((nx,nt),dtype=np.complex128)
 
-        eigenstate_value = eigenstate["value"]
+        eigenstate_value = eigenstate.value
         psi[:,0] = eigenstate_value
         for i, t in enumerate(times[1:], start=1):
             psi[:,i] = np.exp(-1j*omega*t)*eigenstate_value
 
-        return Wavefunction(grid=eigenstate["grid"], value=psi)
+        return Wavefunction(grid=eigenstate.grid, value=psi)
 
     else:
-        masked_grid = eigenstate['grid'][mask]
-        masked_value = eigenstate['value'][mask]
+        masked_grid = eigenstate.grid[mask]
+        masked_value = eigenstate.value[mask]
         masked_nx=len(masked_grid)
         nt=len(times)
         masked_psi = np.zeros((masked_nx,nt),dtype=np.complex128)
@@ -574,13 +627,19 @@ class CntdSes:
 
     Args:
         n (int): The number of time steps to perform.
+        observer (Optional[Callable]): Opcionális függvény, amit minden lépés után meghívunk az aktuális állapottal.
 
     Returns:
         np.array: The updated state wavefunction.
     """
-    def step_n(self,n=2):
-        for i in range(n):
-            self.step_one()
+    def step_n(self, n=2, observer=None):
+        if observer is None:
+            for i in range(n):
+                self.step_one()
+        else:
+            for i in range(n):
+                self.step_one()
+                observer(self.__state, i)
         return self.__state
 
     def __str__(self):
@@ -599,7 +658,7 @@ class SplitBoundary:
                  psi0: Wavefunction,omega:float):
         self.__hham=hham
         self.__h0ham=h0ham
-        self.__psi0_initial=psi0["value"]
+        self.__psi0_initial=psi0.value
         self.__omega=omega
 
     def ham1(self,time):
@@ -720,7 +779,7 @@ class SplitTimeEvolutionCalculator:
 
         self.__psi1_initial=np.zeros(self.__nx,dtype=np.complex128)
         if psi1_initial is not None:
-            self.__psi1_initial=np.array(psi1_initial["value"],dtype=np.complex128)
+            self.__psi1_initial=np.array(psi1_initial.value,dtype=np.complex128)
 
         if mask is None:
             self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
@@ -776,9 +835,9 @@ class SplitTimeEvolutionCalculator:
         return Wavefunction(grid=self.__uxgrid,value=self.__psi1_time_evolution)
     
     @property
-    def psi_time_evolution(self):
-        self.__psi = self.__psi1_time_evolution + self.__psi0_time_evolution["value"]
-        return Wavefunction(grid=self.__uxgrid,value=self.__psi)
+    def psi_time_evolution(self) -> Wavefunction:
+        psi = self.__psi1_time_evolution + self.__psi0_time_evolution.value
+        return Wavefunction(grid=self.__uxgrid,value=psi)
     
     @property
     def boundary(self):

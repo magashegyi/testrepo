@@ -5,11 +5,41 @@ import numpy as np
 import scipy
 from typing import TypedDict
 from utils.smooth_utils import smoothing1D
+import h5py
+from quantum_toolkit.quantum_toolkit import Particle  # <-- ezt adjuk hozzá az importokhoz
 
-class QuasiParticle(qtk.Particle,TypedDict):
-    amplitudes: tuple
-    transmission: float
-    reflection: float
+class QuasiParticle(qtk.Particle):
+    """
+    Kvázirészecske osztály, amely a Particle-t bővíti ki amplitúdókkal, transzmisszióval és reflexióval.
+    """
+    def __init__(self, charge, mass, angular_frequency, wavenumber, state, amplitudes, transmission, reflection):
+        super().__init__(charge, mass, angular_frequency, wavenumber, state)
+        self.amplitudes = amplitudes
+        self.transmission = transmission
+        self.reflection = reflection
+
+    def to_hdf5_group(self, group):
+        super().to_hdf5_group(group)
+        group.create_dataset("amplitudes", data=np.array(self.amplitudes, dtype=np.complex128))
+        group.attrs["transmission"] = self.transmission
+        group.attrs["reflection"] = self.reflection
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        base = qtk.Particle.from_hdf5_group(group)
+        amplitudes = tuple(group["amplitudes"][()])
+        transmission = group.attrs["transmission"]
+        reflection = group.attrs["reflection"]
+        return cls(
+            charge=base.charge,
+            mass=base.mass,
+            angular_frequency=base.angular_frequency,
+            wavenumber=base.wavenumber,
+            state=base.state,
+            amplitudes=amplitudes,
+            transmission=transmission,
+            reflection=reflection
+        )
 
 def retarded_green_function(ein: float,ham: qtk.HamiltonOperator):
     
@@ -57,11 +87,11 @@ def input_amplitude(k: float,wf: qtk.Wavefunction):
         x1_index=2
         x2_index=12
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ain=(psi1*np.exp(1j*k*x1)-psi2*np.exp(1j*k*x2))/(np.exp(1j*k*2*x1)-np.exp(1j*k*2*x2))
 
@@ -69,11 +99,11 @@ def input_amplitude(k: float,wf: qtk.Wavefunction):
         x1_index=-12
         x2_index=-2
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ain=(psi1*np.exp(1j*k*x1)-psi2*np.exp(1j*k*x2))/(np.exp(1j*k*2*x1)-np.exp(1j*k*2*x2))
 
@@ -84,10 +114,10 @@ def transmission_amplitude(k: float,wf: qtk.Wavefunction):
 
     if k>0:
 
-        At=wf["value"][-1]/np.exp(1j*k*wf["grid"][-1])
+        At=wf.value[-1]/np.exp(1j*k*wf.grid[-1])
     else:
 
-        At=wf["value"][0]/np.exp(1j*k*wf["grid"][0])
+        At=wf.value[0]/np.exp(1j*k*wf.grid[0])
 
     return At
 
@@ -97,11 +127,11 @@ def reflection_amplitude(k: float,wf: qtk.Wavefunction):
         x1_index=2
         x2_index=12
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ar=(psi1*np.exp(-1j*k*x1)-psi2*np.exp(-1j*k*x2))/(np.exp(-1j*k*2*x1)-np.exp(-1j*k*2*x2))
 
@@ -109,11 +139,11 @@ def reflection_amplitude(k: float,wf: qtk.Wavefunction):
         x1_index=-12
         x2_index=-2
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ar=(psi1*np.exp(-1j*k*x1)-psi2*np.exp(-1j*k*x2))/(np.exp(-1j*k*2*x1)-np.exp(-1j*k*2*x2))
 
@@ -125,11 +155,11 @@ def amplitudes(k: float,wf: qtk.Wavefunction):
         x1_index=2
         x2_index=12
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ar=(psi1*np.exp(-1j*k*x1)-psi2*np.exp(-1j*k*x2))/(np.exp(-1j*k*2*x1)-np.exp(-1j*k*2*x2))
 
@@ -137,16 +167,16 @@ def amplitudes(k: float,wf: qtk.Wavefunction):
 
         Ain=(psi1*np.exp(1j*k*x1)-psi2*np.exp(1j*k*x2))/(np.exp(1j*k*2*x1)-np.exp(1j*k*2*x2))
 
-        At=wf["value"][-1]/np.exp(1j*k*wf["grid"][-1])
+        At=wf.value[-1]/np.exp(1j*k*wf.grid[-1])
     else:
         x1_index=-12
         x2_index=-2
 
-        x1=wf["grid"][x1_index]
-        x2=wf["grid"][x2_index]
+        x1=wf.grid[x1_index]
+        x2=wf.grid[x2_index]
 
-        psi1=wf["value"][x1_index]
-        psi2=wf["value"][x2_index]
+        psi1=wf.value[x1_index]
+        psi2=wf.value[x2_index]
 
         Ar=(psi1*np.exp(-1j*k*x1)-psi2*np.exp(-1j*k*x2))/(np.exp(-1j*k*2*x1)-np.exp(-1j*k*2*x2))
 
@@ -154,7 +184,7 @@ def amplitudes(k: float,wf: qtk.Wavefunction):
 
         Ain=(psi1*np.exp(1j*k*x1)-psi2*np.exp(1j*k*x2))/(np.exp(1j*k*2*x1)-np.exp(1j*k*2*x2))
 
-        At=wf["value"][0]/np.exp(1j*k*wf["grid"][0])
+        At=wf.value[0]/np.exp(1j*k*wf.grid[0])
 
     return (Ain,At,Ar)
 
@@ -167,27 +197,27 @@ def amplitudes2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
     """
     # Split the wavefunction into left and right parts
 
-    x_left = wf["grid"][:fit_num]
-    x_right = wf["grid"][-fit_num:]
+    x_left = wf.grid[:fit_num]
+    x_right = wf.grid[-fit_num:]
 
     # Solve with least-squares solution
-    A = np.zeros([fit_num,2],dtype=np.complex128)
-    A[:,0]=np.exp(1j*k*x_left) # incoming wave on the left
-    A[:,1]=np.exp(-1j*k*x_left) # reflected wave on the left
-    b=wf["value"][:fit_num].T
+    Al = np.zeros([fit_num,2],dtype=np.complex128)
+    Al[:,0] = np.exp(1j*k*x_left) # incoming wave on the left
+    Al[:,1] = np.exp(-1j*k*x_left) # reflected wave on the left
+    bl = wf.value[:fit_num].T
 
-    x_lstsq = linalg.lstsq(A,b,rcond=None)[0] # computing the numpy solution
-    a_left=x_lstsq[0] # complex amplitude of positive propagating wave on the left
-    b_left=x_lstsq[1] # complex amplitude of negative propagating wave on the left
+    x_lstsq_left = linalg.lstsq(Al,bl,rcond=None)[0] # computing the numpy solution
+    a_left=x_lstsq_left[0] # complex amplitude of positive propagating wave on the left
+    b_left=x_lstsq_left[1] # complex amplitude of negative propagating wave on the left
     
-    A = np.zeros([fit_num,2],dtype=np.complex128)
-    A[:,0]=np.exp(1j*k*x_right) # incoming wave on the right
-    A[:,1]=np.exp(-1j*k*x_right) # reflected wave on the right
-    b=wf["value"][-fit_num:].T
+    Ar = np.zeros([fit_num,2],dtype=np.complex128)
+    Ar[:,0]=np.exp(1j*k*x_right) # incoming wave on the right
+    Ar[:,1]=np.exp(-1j*k*x_right) # reflected wave on the right
+    br = wf.value[-fit_num:].T
 
-    x_lstsq = linalg.lstsq(A,b,rcond=None)[0] # computing the numpy solution
-    a_right=x_lstsq[0] # complex amplitude of positive propagating wave on the right
-    b_right=x_lstsq[1] # complex amplitude of negative propagating wave on the right
+    x_lstsq_right = linalg.lstsq(Ar,br,rcond=None)[0] # computing the numpy solution
+    a_right=x_lstsq_right[0] # complex amplitude of positive propagating wave on the right
+    b_right=x_lstsq_right[1] # complex amplitude of negative propagating wave on the right
 
     return (a_left,b_left,a_right,b_right)
 
@@ -200,7 +230,7 @@ def input_amplitude2(k: float,wf: qtk.Wavefunction, fit_num: int = 100):
     if k>0:
         return a_left
     else:
-        return b_right
+        return a_right
     
 def transmission_amplitude2(k: float,wf: qtk.Wavefunction, fit_num: int = 100):
     """
@@ -242,7 +272,7 @@ def transmission2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
     if k>0:
         return np.abs(a_right*np.conj(a_right))/np.abs(a_left*np.conj(a_left))
     else:
-        return np.abs(b_left*np.conj(b_left))/np.abs(b_right*np.conj(b_right))
+        return np.abs(a_left*np.conj(a_left))/np.abs(a_right*np.conj(a_right))
 
 def reflection(k: float,wf: qtk.Wavefunction):
     """
@@ -259,7 +289,7 @@ def reflection2(k: float,wf: qtk.Wavefunction,fit_num: int = 100):
     if k>0:
         return np.abs(b_left*np.conj(b_left))/np.abs(a_left*np.conj(a_left))
     else:
-        return np.abs(a_right*np.conj(a_right))/np.abs(b_right*np.conj(b_right))
+        return np.abs(b_right*np.conj(b_right))/np.abs(a_right*np.conj(a_right))
 
 def density_of_states_from_green_function(Gret):
     return (-1/np.pi)*np.imag(np.trace(Gret))
@@ -322,33 +352,45 @@ def normed_states_at_given_energy2(ein: float,kin: float,ham: qtk.HamiltonOperat
     ain_mk=input_amplitude2(-kin,statemk)
 
     #nstatepk_value, nstatemk_value = statepk["value"]/np.abs(ain_pk), statemk["value"]/np.abs(ain_mk)
-    nstatepk=qtk.Wavefunction(grid=statepk["grid"],value=statepk["value"]/np.abs(ain_pk))
-    nstatemk=qtk.Wavefunction(grid=statemk["grid"],value=statemk["value"]/np.abs(ain_mk))
-    print(np.abs(ain_pk),np.abs(ain_mk))
+    nstatepk=qtk.Wavefunction(grid=statepk.grid,value=statepk.value/np.abs(ain_pk))
+    nstatemk=qtk.Wavefunction(grid=statemk.grid,value=statemk.value/np.abs(ain_mk))
+    #print(np.abs(ain_pk),np.abs(ain_mk))
 
     if return_green:
         return nstatepk, nstatemk, green
     else:
         return nstatepk, nstatemk
 
-def quasiparticles_at_given_energy(ein: float, kin: float, ham: qtk.HamiltonOperator, return_green=False, normed=True):
+def quasiparticles_at_given_energy(ein: float, kin: float, ham: qtk.HamiltonOperator, return_green=False, normed=True, fit_num: int = 100):
+
+    angular_frequency = ein/ham.hbar
 
     if normed:
         statepk, statemk, green = normed_states_at_given_energy2(ein,kin,ham,return_green=True)
     else:
         statepk, statemk, green = states_at_given_energy(ein,ham,return_green=True)
 
-    qppk= QuasiParticle( charge=ham.charge, mass=ham.mass,\
-            state=statepk,energy=ein, wavenumber=kin,\
-            amplitudes = amplitudes(kin,statepk),\
-            transmission = transmission(kin,statepk),\
-            reflection = reflection(kin,statepk))
-    
-    qpmk= QuasiParticle(charge=ham.charge, mass=ham.mass,\
-            state=statemk,energy=ein, wavenumber=-kin,\
-            amplitudes = amplitudes(-kin,statemk),\
-            transmission = transmission(-kin,statemk),\
-            reflection = reflection(-kin,statemk))
+    qppk = QuasiParticle(
+        charge=ham.charge,
+        mass=ham.mass,
+        angular_frequency=angular_frequency,
+        wavenumber=kin,
+        state=statepk,
+        amplitudes=amplitudes2(kin, statepk, fit_num),
+        transmission=transmission2(kin, statepk, fit_num),
+        reflection=reflection2(kin, statepk, fit_num)
+    )
+
+    qpmk = QuasiParticle(
+        charge=ham.charge,
+        mass=ham.mass,
+        angular_frequency=angular_frequency,
+        wavenumber=-kin,
+        state=statemk,
+        amplitudes=amplitudes2(-kin, statemk, fit_num),
+        transmission=transmission2(-kin, statemk, fit_num),
+        reflection=reflection2(-kin, statemk, fit_num)
+    )
 
     if return_green:
         return qppk, qpmk, green
