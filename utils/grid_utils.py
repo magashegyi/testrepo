@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Optional, Union, Tuple
 from enum import Enum
+import h5py
 
 
 class GridInitMode(Enum):
@@ -259,6 +260,56 @@ class Grid:
         return (f"Grid(num={self.num}, dx={self.dx:.4f}, "
                 f"width={self.width:.4f}, start={self.start:.4f}, stop={self.stop:.4f})")
 
+    def to_hdf5_group(self, group):
+        """
+        Save the Grid object to an HDF5 group.
+        
+        Parameters:
+            group: HDF5 group to save the grid data to.
+        """
+        # Save basic grid properties as attributes
+        group.attrs["num"] = self._num
+        group.attrs["dx"] = self.dx
+        group.attrs["width"] = self._width
+        group.attrs["start"] = self.start
+        group.attrs["stop"] = self.stop
+        
+        # Save the actual grid array as a dataset
+        group.create_dataset("grid", data=self.grid)
+    
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """
+        Load a Grid object from an HDF5 group.
+        
+        Parameters:
+            group: HDF5 group containing the grid data.
+            
+        Returns:
+            Grid: A new Grid object with the loaded data.
+        """
+        # Load the grid array
+        grid_data = group["grid"][()]
+        
+        # Load metadata
+        num = group.attrs["num"]
+        dx = group.attrs["dx"]
+        width = group.attrs["width"]
+        start = group.attrs["start"]
+        stop = group.attrs["stop"]
+        
+        # Create a new Grid object and manually set its properties
+        # We use a dummy initialization and then override the values
+        grid_obj = cls.__new__(cls)
+        grid_obj.grid = grid_data
+        grid_obj.dx = dx
+        grid_obj._num = num
+        grid_obj._width = width
+        grid_obj.start = start
+        grid_obj.stop = stop
+        
+        return grid_obj
+        
 
 class MaskGenerator:
     """Utility class for generating various types of masks for grid subsampling."""
@@ -613,3 +664,66 @@ class SimulationGrid:
                 f"  spatial_masks: {spatial_mask_names},\n"
                 f"  temporal_masks: {temporal_mask_names}\n"
                 f")")
+
+    def to_hdf5_group(self, group):
+        """
+        Save the SimulationGrid object to an HDF5 group.
+        
+        Parameters:
+            group: HDF5 group to save the simulation grid data to.
+        """
+        # Save spatial grid
+        spatial_grp = group.create_group("spatial_grid")
+        self.spatial_grid.to_hdf5_group(spatial_grp)
+        
+        # Save temporal grid
+        temporal_grp = group.create_group("temporal_grid")
+        self.temporal_grid.to_hdf5_group(temporal_grp)
+        
+        # Save spatial masks
+        if self.spatial_masks:
+            spatial_masks_grp = group.create_group("spatial_masks")
+            for name, mask in self.spatial_masks.items():
+                spatial_masks_grp.create_dataset(name, data=mask)
+        
+        # Save temporal masks
+        if self.temporal_masks:
+            temporal_masks_grp = group.create_group("temporal_masks")
+            for name, mask in self.temporal_masks.items():
+                temporal_masks_grp.create_dataset(name, data=mask)
+    
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """
+        Load a SimulationGrid object from an HDF5 group.
+        
+        Parameters:
+            group: HDF5 group containing the simulation grid data.
+            
+        Returns:
+            SimulationGrid: A new SimulationGrid object with the loaded data.
+        """
+        # Load spatial and temporal grids
+        spatial_grid = Grid.from_hdf5_group(group["spatial_grid"])
+        temporal_grid = Grid.from_hdf5_group(group["temporal_grid"])
+        
+        # Create a new SimulationGrid object and manually set its properties
+        sim_grid = cls.__new__(cls)
+        sim_grid.spatial_grid = spatial_grid
+        sim_grid.temporal_grid = temporal_grid
+        sim_grid.spatial_masks = {}
+        sim_grid.temporal_masks = {}
+        
+        # Load spatial masks if they exist
+        if "spatial_masks" in group:
+            spatial_masks_grp = group["spatial_masks"]
+            for name in spatial_masks_grp.keys():
+                sim_grid.spatial_masks[name] = spatial_masks_grp[name][()]
+        
+        # Load temporal masks if they exist
+        if "temporal_masks" in group:
+            temporal_masks_grp = group["temporal_masks"]
+            for name in temporal_masks_grp.keys():
+                sim_grid.temporal_masks[name] = temporal_masks_grp[name][()]
+        
+        return sim_grid

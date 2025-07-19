@@ -683,6 +683,9 @@ class SplitBoundary:
 class SplitTimeEvolutionCalculator:
     """
     Class for calculating the time evolution of a wavefunction using split operator methods.
+    This simplified version does not store internal memory or support masking.
+    Results are provided via an observer function at each time step.
+
     Attributes:
         psi0_omega (float): The angular frequency of the initial wavefunction.
         psi0_initial (Wavefunction): The initial wavefunction.
@@ -694,18 +697,15 @@ class SplitTimeEvolutionCalculator:
         dt (float): The time step size.
         t_start (float): The initial time.
         t_stop (float): The final time.
-        save_interval (float): The interval at which to save the results.
-        mask (Optional[np.ndarray]): A boolean mask array to apply to the grid and value of the wavefunction. If None, no mask is applied.
-        vcap (Optional[np.ndarray]): The complex absorbing potential array. If None, a default complex absorbing potential is generated using `vcap_generator`.
+        vcap (Optional[np.ndarray]): The complex absorbing potential array.
     """
-    def __init__(self, psi0_omega: float, psi0_initial: Wavefunction,\
-                 psi1_initial: Wavefunction = None,\
-                 scalarpot=pots.ZeroPotential,vectorpot=pots.ZeroPotential,\
-                 me=hartree_atomic_units.me,\
-                 hbar=hartree_atomic_units.hb,\
-                 charge=hartree_atomic_units.e0,\
-                 dt=0.01, t_start=0.0, t_stop=1.0, save_interval=0.1,\
-                 mask: Optional[np.ndarray] = None, vcap = None):
+    def __init__(self, psi0_omega: float, psi0_initial: Wavefunction,
+                 psi1_initial: Wavefunction = None,
+                 scalarpot=pots.ZeroPotential, vectorpot=pots.ZeroPotential,
+                 me=hartree_atomic_units.me,
+                 hbar=hartree_atomic_units.hb,
+                 charge=hartree_atomic_units.e0,
+                 dt=0.01, t_start=0.0, t_stop=1.0, vcap=None):
         """
         Initialize the SplitTimeEvolutionCalculator.
 
@@ -715,6 +715,8 @@ class SplitTimeEvolutionCalculator:
             The angular frequency of the initial wavefunction.
         psi0_initial : Wavefunction
             The initial wavefunction.
+        psi1_initial : Wavefunction, optional
+            The initial state for the driven part (default: zero).
         scalarpot : function
             The scalar potential function.
         vectorpot : function
@@ -731,100 +733,99 @@ class SplitTimeEvolutionCalculator:
             The initial time.
         t_stop : float
             The final time.
-        save_interval : float
-            The interval at which to save the results.
-        mask : Optional[np.ndarray], optional
-            A boolean mask array to apply to the grid and value of the wavefunction. If None, no mask is applied.
         vcap : Optional[np.ndarray], optional
-            The complex absorbing potential array. If None, a default complex absorbing potential is generated using `vcap_generator`.
+            The complex absorbing potential array.
         """
-
-        self.__psi0_omega=psi0_omega
-        self.__psi0_initial=psi0_initial
-
-        self.__utgrid=np.arange(t_start,t_stop,dt)
+        self.__psi0_omega = psi0_omega
+        self.__psi0_initial = psi0_initial
+        self.__utgrid = np.arange(t_start, t_stop, dt)
 
         if not hasattr(scalarpot, 'grid'):
             raise AttributeError("The scalar potential object must have a 'grid' attribute.")
-        
-        self.__uxgrid=scalarpot.grid #psi1_initial["grid"]
-        zeropot=pots.ZeroPotential(self.__uxgrid)
-        self.__save_interval = save_interval
-        self.__mask = mask
 
-        hham2h1 = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,\
-                                    vectorpot=vectorpot,\
-                                    me=me, hbar=hbar, charge=charge )
-        h0ham2h1 = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,\
-                                    vectorpot=zeropot,\
-                                    me=me, hbar=hbar, charge=charge )
-        hham = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,\
-                                    vectorpot=vectorpot,\
-                                    me=me, hbar=hbar, charge=charge )
-        
+        self.__uxgrid = scalarpot.grid
+        zeropot = pots.ZeroPotential(self.__uxgrid)
+
+        hham2h1 = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,
+                                   vectorpot=vectorpot,
+                                   me=me, hbar=hbar, charge=charge)
+        h0ham2h1 = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,
+                                    vectorpot=zeropot,
+                                    me=me, hbar=hbar, charge=charge)
+        hham = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,
+                                vectorpot=vectorpot,
+                                me=me, hbar=hbar, charge=charge)
+
         if vcap is None:
-            self.v_cap=vcap_generator(self.__uxgrid)
+            self.v_cap = vcap_generator(self.__uxgrid)
         else:
-            self.v_cap=vcap
+            self.v_cap = vcap
         hham.vcap(self.v_cap)
 
-        if mask is not None:
-            self.__masked_nx = len(self.__uxgrid[mask])
-        else:
-            self.__masked_nx = 0
+        self.__nx = len(self.__uxgrid)
+        self.__nt = len(self.__utgrid)
 
-        self.__masked_nx=len(self.__uxgrid[mask])
-        self.__nx=len(self.__uxgrid)
-        self.__nt=len(self.__utgrid)
-
-        self.__psi1_initial=np.zeros(self.__nx,dtype=np.complex128)
         if psi1_initial is not None:
-            self.__psi1_initial=np.array(psi1_initial.value,dtype=np.complex128)
-
-        if mask is None:
-            self.__psi1_time_evolution=np.zeros((self.__nx,self.__nt),\
-                                            dtype=np.complex128)
+            self.__psi1_initial = np.array(psi1_initial.value, dtype=np.complex128)
         else:
-            self.__psi1_time_evolution=np.zeros((self.__masked_nx,self.__nt),\
-                                            dtype=np.complex128)   
+            self.__psi1_initial = np.zeros(self.__nx, dtype=np.complex128)
 
-        self.__solver=CntdSes(self.__psi1_initial, hham,dt=dt)
-        sb=SplitBoundary( hham2h1, h0ham2h1, psi0_initial,psi0_omega)
+        self.__solver = CntdSes(self.__psi1_initial, hham, dt=dt)
+        sb = SplitBoundary(hham2h1, h0ham2h1, psi0_initial, psi0_omega)
         self.__solver.boundary = sb
 
-    """Run the time evolution calculation."""
-    def run(self):
+    def run(self, observer):
+        """
+        Run the time evolution calculation.
 
-        # save_step = int(self.__save_interval / self.__solver._CntdSes__dt)
-        # for i in range(1,self.__nt):
+        The observer function will be called at each time step with the following arguments:
+            observer(psi0, psi1, psi, uxgrid, current_time, time_index, utgrid)
+        where:
+            psi0: np.ndarray, the stationary part at the current time
+            psi1: np.ndarray, the driven part at the current time
+            psi: np.ndarray, the total state at the current time (psi0 + psi1)
+            uxgrid: np.ndarray, the spatial grid
+            current_time: float, the current time
+            time_index: int, the current time index
+            utgrid: np.ndarray, the full time grid
+        """
+        psi0_evol = stationary_time_evolution(self.__psi0_omega,
+                                              self.__utgrid, self.__psi0_initial)
+        psi1 = self.__psi1_initial
+        observer(psi0_evol.value[:, 0], psi1, psi0_evol.value[:, 0] + psi1, self.__uxgrid, self.__utgrid[0], 0, self.__utgrid)
+        for i in range(1, self.__nt):
+            psi1 = self.__solver.step_one()
+            psi0 = psi0_evol.value[:, i]
+            psi = psi0 + psi1
+            observer(psi0, psi1, psi, self.__uxgrid, self.__utgrid[i], i, self.__utgrid)
         #     if i % save_step == 0:
         #         self.__psi1_time_evolution[:,i]=self.__solver.step_one()
         #     else:
         #         self.__solver.step_one()
 
-        if self.__mask is None:
-            self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
-                                            self.__utgrid, self.__psi0_initial)
+        # if self.__mask is None:
+        #     self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
+        #                                     self.__utgrid, self.__psi0_initial)
 
-            if self.__psi1_initial is not None:
-                #print(self.__psi1_time_evolution.shape[0],self.__psi1_initial.shape[0])
-                self.__psi1_time_evolution[:,0]=self.__psi1_initial
-            else:
-                self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
+        #     if self.__psi1_initial is not None:
+        #         #print(self.__psi1_time_evolution.shape[0],self.__psi1_initial.shape[0])
+        #         self.__psi1_time_evolution[:,0]=self.__psi1_initial
+        #     else:
+        #         self.__psi1_time_evolution[:,0]=np.zeros(self.__nx,dtype=np.complex128)
 
-            for i in range(1,self.__nt):
-                self.__psi1_time_evolution[:,i]=self.__solver.step_one()
+        #     for i in range(1,self.__nt):
+        #         self.__psi1_time_evolution[:,i]=self.__solver.step_one()
 
-        else:
-            self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
-                                            self.__utgrid, self.__psi0_initial, self.__mask)
+        # else:
+        #     self.__psi0_time_evolution = stationary_time_evolution(self.__psi0_omega,\
+        #                                     self.__utgrid, self.__psi0_initial, self.__mask)
 
-            if self.__psi1_initial is not None:
-                self.__psi1_time_evolution[:,0]=self.__psi1_initial[self.__mask]
-            else:
-                self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
-            for i in range(1,self.__nt):
-                self.__psi1_time_evolution[:,i]=self.__solver.step_one()[self.__mask]
+        #     if self.__psi1_initial is not None:
+        #         self.__psi1_time_evolution[:,0]=self.__psi1_initial[self.__mask]
+        #     else:
+        #         self.__psi1_time_evolution[:,0]=np.zeros(self.__masked_nx,dtype=np.complex128)
+        #     for i in range(1,self.__nt):
+        #         self.__psi1_time_evolution[:,i]=self.__solver.step_one()[self.__mask]
 
     @property
     def psi0_time_evolution(self):
