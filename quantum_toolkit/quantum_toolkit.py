@@ -34,6 +34,104 @@ class Wavefunction:
         value = group["value"][()]
         return cls(grid=grid, value=value)
 
+class PlaneWave(Wavefunction):
+    """Class representing a plane wave in quantum mechanics.
+    
+    This class extends Wavefunction to specifically handle plane waves
+    with the ability to generate time-dependent or time-independent results.
+
+    Attributes:
+        grid (np.array): The spatial grid.
+        value (np.array): The wavefunction values on the grid (initial spatial part).
+        k (float): The wavenumber of the plane wave.
+        omega (float, optional): The angular frequency of the plane wave. 
+                                If None, only spatial dependence is available.
+    """
+    def __init__(self, k: float, omega: float = None, grid: np.array = None):
+        """
+        Initialize a PlaneWave object.
+
+        Parameters:
+        -----------
+        k : float
+            The wavenumber of the plane wave.
+        omega : float, optional
+            The angular frequency of the plane wave. If None, only spatial 
+            dependence will be available.
+        grid : np.array
+            The spatial grid.
+        """
+        # Initialize the spatial part: exp(i*k*x)
+        spatial_value = np.exp(1j * k * grid)
+        super().__init__(grid, spatial_value)
+        
+        self.k = k
+        self.omega = omega
+    
+    def __call__(self, times: np.array = None) -> 'Wavefunction':
+        """
+        Evaluate the plane wave at given time points.
+        
+        If times is None, returns the spatial part only (1D).
+        If times is provided, returns the full time-dependent wave (2D).
+
+        Parameters:
+        -----------
+        times : np.array, optional
+            Array of time points. If None, returns only spatial dependence.
+
+        Returns:
+        --------
+        Wavefunction
+            A Wavefunction object containing either:
+            - 1D array (nx,) if times is None: exp(i*k*x)
+            - 2D array (nx, nt) if times is provided: exp(i*k*x - i*omega*t)
+            
+        Raises:
+        -------
+        ValueError
+            If times is provided but omega was not set during initialization.
+        """
+        if times is None:
+            # Return only spatial dependence
+            return Wavefunction(grid=self.grid, value=self.value)
+        
+        # Time-dependent case
+        if self.omega is None:
+            raise ValueError("Cannot generate time-dependent wave: omega was not provided during initialization. "
+                           "Create PlaneWave with omega parameter to enable time evolution.")
+        
+        nx = len(self.grid)
+        nt = len(times)
+        psi = np.zeros((nx, nt), dtype=np.complex128)
+        
+        # Calculate exp(i*k*x - i*omega*t) for all space-time points
+        for i, t in enumerate(times):
+            psi[:, i] = self.value * np.exp(-1j * self.omega * t)
+        
+        return Wavefunction(grid=self.grid, value=psi)
+    
+    def to_hdf5_group(self, group):
+        """Save PlaneWave to HDF5 group."""
+        super().to_hdf5_group(group)
+        group.attrs["k"] = self.k
+        if self.omega is not None:
+            group.attrs["omega"] = self.omega
+        else:
+            group.attrs["omega"] = np.nan  # Use NaN to indicate no omega
+        group.attrs["wave_type"] = "plane_wave"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load PlaneWave from HDF5 group."""
+        grid = group["grid"][()]
+        k = group.attrs["k"]
+        omega = group.attrs["omega"]
+        # Handle NaN omega (no time dependence)
+        if np.isnan(omega):
+            omega = None
+        return cls(k=k, omega=omega, grid=grid)
+
 class Particle:
     """Class representing a particle in quantum mechanics.
 
@@ -86,18 +184,43 @@ def zero_wave_function(grid: np.array) -> Wavefunction:
     """
     return Wavefunction(grid=grid, value=np.zeros_like(grid, dtype=np.complex128))
 
-def plane_wave(k: float, grid: np.array) -> Wavefunction:
+def plane_wave(k: float, grid: np.array, omega: float = None) -> PlaneWave:
     """
-    Generate a plane wave function.
+    Create a PlaneWave object with optional time-evolution capabilities.
+    
+    This function creates a PlaneWave that can generate time-dependent
+    results only if omega is provided, otherwise only spatial dependence.
 
     Parameters:
-    k (float): The wavenumber of the plane wave.
-    grid (np.array): The spatial grid.
+    -----------
+    k : float
+        The wavenumber of the plane wave.
+    grid : np.array
+        The spatial grid.
+    omega : float, optional
+        The angular frequency of the plane wave. If not provided,
+        only spatial wavefunction will be available.
 
     Returns:
-    Wavefunction: The plane wave function.
+    --------
+    PlaneWave
+        A PlaneWave object that can be called with optional time array
+        (only if omega was provided).
+        
+    Examples:
+    ---------
+    >>> # Only spatial dependence
+    >>> pw_spatial = plane_wave(k=1.0, grid=np.linspace(0, 10, 100))
+    >>> spatial_only = pw_spatial()  # Returns 1D spatial wavefunction
+    >>> # pw_spatial(times) would raise ValueError
+    
+    >>> # With time dependence
+    >>> pw_time = plane_wave(k=1.0, grid=np.linspace(0, 10, 100), omega=2.0)
+    >>> spatial_only = pw_time()  # Returns 1D spatial wavefunction
+    >>> times = np.linspace(0, 5, 50)
+    >>> time_dependent = pw_time(times)  # Returns 2D space-time wavefunction
     """
-    return Wavefunction(grid=grid, value=np.exp(1j*k*grid))
+    return PlaneWave(k=k, omega=omega, grid=grid)
 
 def gaussian_wavepacket(x0: float, p0: float, sigma: float, grid: np.array) -> Wavefunction:
     """
@@ -502,7 +625,7 @@ def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
     return Vcap
 
 #Stationary state time evolution
-def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefunction, mask: Optional[np.array] = None) -> Wavefunction:
+def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefunction) -> Wavefunction:
     """
     Compute the time evolution of an eigenstate under a given frequency.
 
@@ -514,8 +637,6 @@ def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefun
         Array of time points at which to evaluate the time evolution.
     eigenstate : Wavefunction
         The initial eigenstate represented as a Wavefunction object, containing 'grid' and 'value'.
-    mask : Optional[np.ndarray], optional
-        A boolean mask array to apply to the grid and value of the eigenstate. If None, no mask is applied.
 
     Returns:
     --------
@@ -523,30 +644,16 @@ def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefun
         A Wavefunction object containing the grid and the time-evolved values at each time point.
     """
 
-    if mask is None:
-        nx=len(eigenstate.grid)
-        nt=len(times)
-        psi = np.zeros((nx,nt),dtype=np.complex128)
+    nx=len(eigenstate.grid)
+    nt=len(times)
+    psi = np.zeros((nx,nt),dtype=np.complex128)
 
-        eigenstate_value = eigenstate.value
-        psi[:,0] = eigenstate_value
-        for i, t in enumerate(times[1:], start=1):
-            psi[:,i] = np.exp(-1j*omega*t)*eigenstate_value
+    eigenstate_value = eigenstate.value
+    psi[:,0] = eigenstate_value
+    for i, t in enumerate(times[1:], start=1):
+        psi[:,i] = np.exp(-1j*omega*t)*eigenstate_value
 
-        return Wavefunction(grid=eigenstate.grid, value=psi)
-
-    else:
-        masked_grid = eigenstate.grid[mask]
-        masked_value = eigenstate.value[mask]
-        masked_nx=len(masked_grid)
-        nt=len(times)
-        masked_psi = np.zeros((masked_nx,nt),dtype=np.complex128)
-
-        masked_psi[:,0] = masked_value
-        for i, t in enumerate(times[1:], start=1):
-            masked_psi[:,i] = np.exp(-1j*omega*t)*masked_value
-
-        return Wavefunction(grid=masked_grid, value=masked_psi)
+    return Wavefunction(grid=eigenstate.grid, value=psi)
 
 
 
@@ -702,9 +809,9 @@ class SplitTimeEvolutionCalculator:
     def __init__(self, psi0_omega: float, psi0_initial: Wavefunction,
                  psi1_initial: Wavefunction = None,
                  scalarpot=pots.ZeroPotential, vectorpot=pots.ZeroPotential,
-                 me=hartree_atomic_units.me,
-                 hbar=hartree_atomic_units.hb,
-                 charge=hartree_atomic_units.e0,
+                 me = None,#=hartree_atomic_units.me,
+                 hbar = None,#=hartree_atomic_units.hb,
+                 charge = None,#=hartree_atomic_units.e0,
                  dt=0.01, t_start=0.0, t_stop=1.0, vcap=None):
         """
         Initialize the SplitTimeEvolutionCalculator.
@@ -756,11 +863,8 @@ class SplitTimeEvolutionCalculator:
                                 vectorpot=vectorpot,
                                 me=me, hbar=hbar, charge=charge)
 
-        if vcap is None:
-            self.v_cap = vcap_generator(self.__uxgrid)
-        else:
-            self.v_cap = vcap
-        hham.vcap(self.v_cap)
+        if vcap is not None:
+            hham.vcap(vcap)
 
         self.__nx = len(self.__uxgrid)
         self.__nt = len(self.__utgrid)
@@ -843,6 +947,121 @@ class SplitTimeEvolutionCalculator:
     @property
     def boundary(self):
         return self.__solver.boundary
+
+
+class SimpleTimeEvolutionCalculator:
+    """
+    Class for calculating the time evolution of a wavefunction using a single Hamiltonian operator.
+    This simplified version does not use split operator methods and evolves the entire state 
+    with a single Hamiltonian operator. Results are provided via an observer function at each time step.
+
+    Attributes:
+        initial_state (Wavefunction): The initial wavefunction.
+        scalarpot (function): The scalar potential function.
+        vectorpot (function): The vector potential function.
+        me (float): The mass of the particle.
+        hbar (float): The reduced Planck constant.
+        charge (float): The charge of the particle.
+        dt (float): The time step size.
+        t_start (float): The initial time.
+        t_stop (float): The final time.
+        vcap (Optional[np.ndarray]): The complex absorbing potential array.
+    """
+    def __init__(self, initial_state: Wavefunction,
+                 scalarpot=pots.ZeroPotential, vectorpot=pots.ZeroPotential,
+                 me=hartree_atomic_units.me,
+                 hbar=hartree_atomic_units.hb,
+                 charge=hartree_atomic_units.e0,
+                 dt=0.01, t_start=0.0, t_stop=1.0, vcap=None):
+        """
+        Initialize the SimpleTimeEvolutionCalculator.
+
+        Parameters:
+        -----------
+        initial_state : Wavefunction
+            The initial wavefunction.
+        scalarpot : function
+            The scalar potential function.
+        vectorpot : function
+            The vector potential function.
+        me : float
+            The mass of the particle.
+        hbar : float
+            The reduced Planck constant.
+        charge : float
+            The charge of the particle.
+        dt : float
+            The time step size.
+        t_start : float
+            The initial time.
+        t_stop : float
+            The final time.
+        vcap : Optional[np.ndarray], optional
+            The complex absorbing potential array.
+        """
+        self.__initial_state = initial_state
+        self.__utgrid = np.arange(t_start, t_stop, dt)
+
+        if not hasattr(scalarpot, 'grid'):
+            raise AttributeError("The scalar potential object must have a 'grid' attribute.")
+
+        self.__uxgrid = scalarpot.grid
+
+        # Create the main Hamiltonian operator
+        hham = HamiltonOperator(self.__uxgrid, scalarpot=scalarpot,
+                                vectorpot=vectorpot,
+                                me=me, hbar=hbar, charge=charge)
+
+        if vcap is None:
+            self.v_cap = vcap_generator(self.__uxgrid)
+        else:
+            self.v_cap = vcap
+        hham.vcap(self.v_cap)
+
+        self.__nx = len(self.__uxgrid)
+        self.__nt = len(self.__utgrid)
+
+        # Initialize the solver with the initial state
+        initial_state_array = np.array(initial_state.value, dtype=np.complex128)
+        self.__solver = CntdSes(initial_state_array, hham, dt=dt, t_start=t_start)
+
+    def run(self, observer):
+        """
+        Run the time evolution calculation.
+
+        The observer function will be called at each time step with the following arguments:
+            observer(psi, uxgrid, current_time, time_index, utgrid)
+        where:
+            psi: np.ndarray, the state at the current time
+            uxgrid: np.ndarray, the spatial grid
+            current_time: float, the current time
+            time_index: int, the current time index
+            utgrid: np.ndarray, the full time grid
+        """
+        # Call observer for initial state
+        psi = self.__solver._CntdSes__state  # Access private attribute
+        observer(psi, self.__uxgrid, self.__utgrid[0], 0, self.__utgrid)
+        
+        # Time evolution loop
+        for i in range(1, self.__nt):
+            psi = self.__solver.step_one()
+            observer(psi, self.__uxgrid, self.__utgrid[i], i, self.__utgrid)
+
+    @property
+    def grid(self):
+        """Get the spatial grid."""
+        return self.__uxgrid
+    
+    @property
+    def time_grid(self):
+        """Get the time grid."""
+        return self.__utgrid
+    
+    @property
+    def initial_state(self):
+        """Get the initial state."""
+        return self.__initial_state
+
 
 # class BaseDispersion(ABC):
 #     """
