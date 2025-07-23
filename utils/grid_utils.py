@@ -393,13 +393,102 @@ class MaskGenerator:
         half_width = width / 2
         return MaskGenerator.range_mask(grid_num, grid_array, center - half_width, center + half_width)
 
+
+class GridAccessor:
+    """
+    A flexible accessor for grid data with optional masking capabilities.
+    
+    This class provides a clean interface for accessing grid data with various
+    masking options while maintaining backward compatibility.
+    """
+    
+    def __init__(self, grid: Grid, masks: dict):
+        """
+        Initialize the GridAccessor.
+        
+        Parameters:
+            grid: The underlying Grid object.
+            masks: Dictionary of named masks.
+        """
+        self._grid = grid
+        self._masks = masks
+    
+    def __call__(self, mask: Union[str, np.ndarray, None] = None) -> np.ndarray:
+        """
+        Get grid values with optional masking.
+        
+        Parameters:
+            mask: Either a mask name (str), a boolean array, or None for full grid.
+            
+        Returns:
+            Grid values, optionally masked.
+        """
+        if mask is None:
+            return self._grid.grid
+        elif isinstance(mask, str):
+            if mask not in self._masks:
+                raise KeyError(f"Mask '{mask}' not found")
+            return self._grid.grid[self._masks[mask]]
+        elif isinstance(mask, np.ndarray):
+            return self._grid.grid[mask]
+        else:
+            raise ValueError("mask must be a string (mask name), numpy array, or None")
+    
+    @property
+    def values(self) -> np.ndarray:
+        """Get the full grid values."""
+        return self._grid.grid
+    
+    @property
+    def grid(self) -> Grid:
+        """Get the underlying Grid object."""
+        return self._grid
+    
+    @property 
+    def num(self) -> int:
+        """Number of grid points."""
+        return self._grid.num
+    
+    @property
+    def dx(self) -> float:
+        """Grid step size."""
+        return self._grid.dx
+        
+    @property
+    def width(self) -> float:
+        """Grid width."""
+        return self._grid.width
+    
+    @property
+    def start(self) -> float:
+        """Grid start value."""
+        return self._grid.start
+    
+    @property
+    def stop(self) -> float:
+        """Grid stop value."""
+        return self._grid.stop
+    
+    def __len__(self) -> int:
+        """Return the number of grid points."""
+        return len(self._grid)
+    
+    def __getitem__(self, key: Union[int, slice]) -> Union[float, np.ndarray]:
+        """Enable indexing and slicing of the grid."""
+        return self._grid[key]
+    
+    def __repr__(self) -> str:
+        """Return string representation."""
+        available_masks = list(self._masks.keys())
+        return f"GridAccessor({self._grid}, masks={available_masks})"
+
+
 class SimulationGrid:
     """
-    Utility class for creating and managing spatial and temporal grids for simulations.
+    Simplified utility class for creating and managing spatial and temporal grids for simulations.
     
-    This class provides a high-level interface for creating simulation grids with optional
-    masking capabilities for subsampling. It supports flexible initialization using various
-    combinations of grid parameters and allows multiple named masks for both spatial and temporal grids.
+    This class provides a clean interface for creating simulation grids with flexible masking
+    capabilities. Masks can be applied directly through the grid properties.
     """
     
     def __init__(
@@ -433,23 +522,26 @@ class SimulationGrid:
             t_stop: Stop value for the temporal grid.
         """
         # Create spatial grid (centered around zero)
-        self.spatial_grid = Grid(
+        self._spatial_grid = Grid(
             points=x_points, step=x_step, width=x_width, 
             start=x_start, stop=x_stop, center=True
         )
         
         # Create temporal grid (not centered)
-        self.temporal_grid = Grid(
+        self._temporal_grid = Grid(
             points=t_points, step=t_step, width=t_width, 
             start=t_start, stop=t_stop, center=False
         )
         
         # Initialize mask dictionaries for named masks
-        self.spatial_masks = {}
-        self.temporal_masks = {}
+        self.masks = {
+            'spatial': {},
+            'temporal': {}
+        }
     
-    def add_spatial_mask(
+    def add_mask(
         self, 
+        grid_type: str,
         name: str, 
         mask_type: str = 'uniform', 
         desired_points: Optional[int] = None,
@@ -460,9 +552,10 @@ class SimulationGrid:
         random_seed: Optional[int] = None
     ) -> None:
         """
-        Add a named spatial mask.
+        Add a named mask for either spatial or temporal grid.
 
         Parameters:
+            grid_type: Either 'spatial' or 'temporal'.
             name: Name identifier for the mask.
             mask_type: Type of mask ('uniform', 'random', 'range', 'center').
             desired_points: Number of points for uniform/random masks.
@@ -472,55 +565,15 @@ class SimulationGrid:
             width: Width for center mask.
             random_seed: Random seed for random masks.
         """
+        if grid_type not in ['spatial', 'temporal']:
+            raise ValueError("grid_type must be 'spatial' or 'temporal'")
+            
+        grid = self._spatial_grid if grid_type == 'spatial' else self._temporal_grid
         mask = self._create_mask(
-            self.spatial_grid.num, 
-            self.spatial_grid.grid,
-            mask_type, 
-            desired_points, 
-            start, 
-            stop, 
-            center, 
-            width, 
-            random_seed
+            grid.num, grid.grid, mask_type, desired_points, 
+            start, stop, center, width, random_seed
         )
-        self.spatial_masks[name] = mask
-    
-    def add_temporal_mask(
-        self, 
-        name: str, 
-        mask_type: str = 'uniform', 
-        desired_points: Optional[int] = None,
-        start: Optional[float] = None,
-        stop: Optional[float] = None,
-        center: Optional[float] = None,
-        width: Optional[float] = None,
-        random_seed: Optional[int] = None
-    ) -> None:
-        """
-        Add a named temporal mask.
-
-        Parameters:
-            name: Name identifier for the mask.
-            mask_type: Type of mask ('uniform', 'random', 'range', 'center').
-            desired_points: Number of points for uniform/random masks.
-            start: Start value for range mask.
-            stop: Stop value for range mask.
-            center: Center value for center mask.
-            width: Width for center mask.
-            random_seed: Random seed for random masks.
-        """
-        mask = self._create_mask(
-            self.temporal_grid.num, 
-            self.temporal_grid.grid,
-            mask_type, 
-            desired_points, 
-            start, 
-            stop, 
-            center, 
-            width, 
-            random_seed
-        )
-        self.temporal_masks[name] = mask
+        self.masks[grid_type][name] = mask
     
     def _create_mask(
         self, 
@@ -554,62 +607,40 @@ class SimulationGrid:
         else:
             raise ValueError(f"Unknown mask type: {mask_type}. Use 'uniform', 'random', 'range', or 'center'.")
     
-    def remove_spatial_mask(self, name: str) -> None:
-        """Remove a named spatial mask."""
-        if name in self.spatial_masks:
-            del self.spatial_masks[name]
+    def remove_mask(self, grid_type: str, name: str) -> None:
+        """Remove a named mask."""
+        if grid_type not in ['spatial', 'temporal']:
+            raise ValueError("grid_type must be 'spatial' or 'temporal'")
+        if name in self.masks[grid_type]:
+            del self.masks[grid_type][name]
         else:
-            raise KeyError(f"Spatial mask '{name}' not found")
+            raise KeyError(f"Mask '{name}' not found in {grid_type} masks")
     
-    def remove_temporal_mask(self, name: str) -> None:
-        """Remove a named temporal mask."""
-        if name in self.temporal_masks:
-            del self.temporal_masks[name]
+    def get_mask(self, grid_type: str, name: str) -> np.ndarray:
+        """Get a named mask."""
+        if grid_type not in ['spatial', 'temporal']:
+            raise ValueError("grid_type must be 'spatial' or 'temporal'")
+        if name in self.masks[grid_type]:
+            return self.masks[grid_type][name]
         else:
-            raise KeyError(f"Temporal mask '{name}' not found")
+            raise KeyError(f"Mask '{name}' not found in {grid_type} masks")
     
-    def get_spatial_mask(self, name: str) -> np.ndarray:
-        """Get a named spatial mask."""
-        if name in self.spatial_masks:
-            return self.spatial_masks[name]
-        else:
-            raise KeyError(f"Spatial mask '{name}' not found")
+    def list_masks(self, grid_type: str) -> list:
+        """List all mask names for a grid type."""
+        if grid_type not in ['spatial', 'temporal']:
+            raise ValueError("grid_type must be 'spatial' or 'temporal'")
+        return list(self.masks[grid_type].keys())
     
-    def get_temporal_mask(self, name: str) -> np.ndarray:
-        """Get a named temporal mask."""
-        if name in self.temporal_masks:
-            return self.temporal_masks[name]
-        else:
-            raise KeyError(f"Temporal mask '{name}' not found")
+    # Modern grid access properties with masking support
+    @property 
+    def spatial(self) -> 'GridAccessor':
+        """Access spatial grid with optional masking."""
+        return GridAccessor(self._spatial_grid, self.masks['spatial'])
     
-    def get_spatial_masked_grid(self, name: str) -> np.ndarray:
-        """Get the spatial grid masked with a named mask."""
-        mask = self.get_spatial_mask(name)
-        return self.spatial_grid.grid[mask]
-    
-    def get_temporal_masked_grid(self, name: str) -> np.ndarray:
-        """Get the temporal grid masked with a named mask."""
-        mask = self.get_temporal_mask(name)
-        return self.temporal_grid.grid[mask]
-    
-    def list_spatial_masks(self) -> list:
-        """List all spatial mask names."""
-        return list(self.spatial_masks.keys())
-    
-    def list_temporal_masks(self) -> list:
-        """List all temporal mask names."""
-        return list(self.temporal_masks.keys())
-    
-    # Grid access properties
     @property
-    def x(self) -> np.ndarray:
-        """Spatial grid array."""
-        return self.spatial_grid
-
-    @property
-    def t(self) -> np.ndarray:
-        """Temporal grid array."""
-        return self.temporal_grid
+    def temporal(self) -> 'GridAccessor':
+        """Access temporal grid with optional masking."""
+        return GridAccessor(self._temporal_grid, self.masks['temporal'])
     
     def get_grid_info(self) -> dict:
         """
@@ -619,7 +650,7 @@ class SimulationGrid:
             Dictionary containing grid metadata and mask information.
         """
         spatial_mask_info = {}
-        for name, mask in self.spatial_masks.items():
+        for name, mask in self.masks['spatial'].items():
             spatial_mask_info[name] = {
                 'points': np.count_nonzero(mask),
                 'total_points': len(mask),
@@ -627,7 +658,7 @@ class SimulationGrid:
             }
         
         temporal_mask_info = {}
-        for name, mask in self.temporal_masks.items():
+        for name, mask in self.masks['temporal'].items():
             temporal_mask_info[name] = {
                 'points': np.count_nonzero(mask),
                 'total_points': len(mask),
@@ -636,31 +667,31 @@ class SimulationGrid:
         
         return {
             'spatial': {
-                'num': self.spatial_grid.num,
-                'dx': self.spatial_grid.dx,
-                'width': self.spatial_grid.width,
-                'start': self.spatial_grid.start,
-                'stop': self.spatial_grid.stop,
+                'num': self._spatial_grid.num,
+                'dx': self._spatial_grid.dx,
+                'width': self._spatial_grid.width,
+                'start': self._spatial_grid.start,
+                'stop': self._spatial_grid.stop,
                 'masks': spatial_mask_info
             },
             'temporal': {
-                'num': self.temporal_grid.num,
-                'dx': self.temporal_grid.dx,
-                'width': self.temporal_grid.width,
-                'start': self.temporal_grid.start,
-                'stop': self.temporal_grid.stop,
+                'num': self._temporal_grid.num,
+                'dx': self._temporal_grid.dx,
+                'width': self._temporal_grid.width,
+                'start': self._temporal_grid.start,
+                'stop': self._temporal_grid.stop,
                 'masks': temporal_mask_info
             }
         }
     
     def __repr__(self) -> str:
         """Return string representation of the simulation grid."""
-        spatial_mask_names = list(self.spatial_masks.keys())
-        temporal_mask_names = list(self.temporal_masks.keys())
+        spatial_mask_names = list(self.masks['spatial'].keys())
+        temporal_mask_names = list(self.masks['temporal'].keys())
         
         return (f"SimulationGrid(\n"
-                f"  spatial: {self.spatial_grid},\n"
-                f"  temporal: {self.temporal_grid},\n"
+                f"  spatial: {self._spatial_grid},\n"
+                f"  temporal: {self._temporal_grid},\n"
                 f"  spatial_masks: {spatial_mask_names},\n"
                 f"  temporal_masks: {temporal_mask_names}\n"
                 f")")
@@ -674,22 +705,22 @@ class SimulationGrid:
         """
         # Save spatial grid
         spatial_grp = group.create_group("spatial_grid")
-        self.spatial_grid.to_hdf5_group(spatial_grp)
+        self._spatial_grid.to_hdf5_group(spatial_grp)
         
         # Save temporal grid
         temporal_grp = group.create_group("temporal_grid")
-        self.temporal_grid.to_hdf5_group(temporal_grp)
+        self._temporal_grid.to_hdf5_group(temporal_grp)
         
         # Save spatial masks
-        if self.spatial_masks:
+        if self.masks['spatial']:
             spatial_masks_grp = group.create_group("spatial_masks")
-            for name, mask in self.spatial_masks.items():
+            for name, mask in self.masks['spatial'].items():
                 spatial_masks_grp.create_dataset(name, data=mask)
         
         # Save temporal masks
-        if self.temporal_masks:
+        if self.masks['temporal']:
             temporal_masks_grp = group.create_group("temporal_masks")
-            for name, mask in self.temporal_masks.items():
+            for name, mask in self.masks['temporal'].items():
                 temporal_masks_grp.create_dataset(name, data=mask)
     
     @classmethod
@@ -709,21 +740,20 @@ class SimulationGrid:
         
         # Create a new SimulationGrid object and manually set its properties
         sim_grid = cls.__new__(cls)
-        sim_grid.spatial_grid = spatial_grid
-        sim_grid.temporal_grid = temporal_grid
-        sim_grid.spatial_masks = {}
-        sim_grid.temporal_masks = {}
+        sim_grid._spatial_grid = spatial_grid
+        sim_grid._temporal_grid = temporal_grid
+        sim_grid.masks = {'spatial': {}, 'temporal': {}}
         
         # Load spatial masks if they exist
         if "spatial_masks" in group:
             spatial_masks_grp = group["spatial_masks"]
             for name in spatial_masks_grp.keys():
-                sim_grid.spatial_masks[name] = spatial_masks_grp[name][()]
+                sim_grid.masks['spatial'][name] = spatial_masks_grp[name][()]
         
         # Load temporal masks if they exist
         if "temporal_masks" in group:
             temporal_masks_grp = group["temporal_masks"]
             for name in temporal_masks_grp.keys():
-                sim_grid.temporal_masks[name] = temporal_masks_grp[name][()]
+                sim_grid.masks['temporal'][name] = temporal_masks_grp[name][()]
         
         return sim_grid
