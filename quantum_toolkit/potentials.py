@@ -1,5 +1,6 @@
 import numpy as np
 from abc import ABC, abstractmethod # abstract base class
+import h5py
 
 import sys
 sys.path.insert(0, '../utils')
@@ -29,6 +30,17 @@ class Potential(ABC):
     def value_at(self, space: float, time: float) -> float:
         pass
 
+    @abstractmethod
+    def to_hdf5_group(self, group):
+        """Save potential to HDF5 group."""
+        pass
+
+    @classmethod
+    @abstractmethod
+    def from_hdf5_group(cls, group):
+        """Load potential from HDF5 group."""
+        pass
+
 class ZeroPotential(Potential):
     """Class representing a zero potential."""
 
@@ -38,19 +50,43 @@ class ZeroPotential(Potential):
     def value_at(self, space: float, time: float) -> float:
         return float(0.0)
     
+    def to_hdf5_group(self, group):
+        """Save ZeroPotential to HDF5 group."""
+        group.create_dataset("grid", data=self._grid)
+        group.attrs["potential_type"] = "zero"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load ZeroPotential from HDF5 group."""
+        grid = group["grid"][()]
+        return cls(grid)
+    
 class ConstantPotential(Potential):
 
     def __init__(self, grid: np.array, value: float):
         super().__init__(grid)
         self.__value = value
 
-    """Class representing a zero potential."""
+    """Class representing a constant potential."""
 
     def __call__(self, time: float) -> np.array:
         return self.__value*np.ones_like(self._grid)
 
     def value_at(self, space: float, time: float) -> float:
         return self.__value
+
+    def to_hdf5_group(self, group):
+        """Save ConstantPotential to HDF5 group."""
+        group.create_dataset("grid", data=self._grid)
+        group.attrs["value"] = self.__value
+        group.attrs["potential_type"] = "constant"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load ConstantPotential from HDF5 group."""
+        grid = group["grid"][()]
+        value = group.attrs["value"]
+        return cls(grid, value)
 
 class StackPotential(Potential):
     """Class representing a stack potential.
@@ -111,6 +147,25 @@ class StackPotential(Potential):
     @welldepth.setter
     def welldepth(self, value: float):
         self.__welldepth = value
+
+    def to_hdf5_group(self, group):
+        """Save StackPotential to HDF5 group."""
+        group.create_dataset("grid", data=self._grid)
+        group.attrs["wallwidth"] = self.__wallwidth
+        group.attrs["wallheight"] = self.__wallheight
+        group.attrs["wellwidth"] = self.__wellwidth
+        group.attrs["welldepth"] = self.__welldepth
+        group.attrs["potential_type"] = "stack"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load StackPotential from HDF5 group."""
+        grid = group["grid"][()]
+        wallwidth = group.attrs["wallwidth"]
+        wallheight = group.attrs["wallheight"]
+        wellwidth = group.attrs["wellwidth"]
+        welldepth = group.attrs["welldepth"]
+        return cls(grid, wallwidth, wallheight, wellwidth, welldepth)
 
 # def smoothing1D_psi(x):
 #     x_half=np.where(x>0,x,1)
@@ -207,6 +262,29 @@ class SmoothStackPotential(Potential):
     def welldepth(self, value: float):
         self.__welldepth = value
 
+    def to_hdf5_group(self, group):
+        """Save SmoothStackPotential to HDF5 group."""
+        group.create_dataset("grid", data=self._grid)
+        group.attrs["wallwidth"] = self.__wallwidth
+        group.attrs["wallheight"] = self.__wallheight
+        group.attrs["wellwidth"] = self.__wellwidth
+        group.attrs["welldepth"] = self.__welldepth
+        group.attrs["wallrise"] = self.__wallrise
+        group.attrs["wellfall"] = self.__wellfall
+        group.attrs["potential_type"] = "smooth_stack"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load SmoothStackPotential from HDF5 group."""
+        grid = group["grid"][()]
+        wallwidth = group.attrs["wallwidth"]
+        wallheight = group.attrs["wallheight"]
+        wellwidth = group.attrs["wellwidth"]
+        welldepth = group.attrs["welldepth"]
+        wallrise = group.attrs["wallrise"]
+        wellfall = group.attrs["wellfall"]
+        return cls(grid, wallwidth, wallheight, wellwidth, welldepth, wallrise, wellfall)
+
 class LaserPotential(Potential):
     """Class representing a laser potential.
 
@@ -291,6 +369,31 @@ class LaserPotential(Potential):
     @property
     def spatial_max(self) -> float:
         return self.__spatial_max
+
+    def to_hdf5_group(self, group):
+        """Save LaserPotential to HDF5 group."""
+        group.create_dataset("spatial_grid", data=self.__spatial_grid)
+        group.attrs["spatial_min"] = self.__spatial_min
+        group.attrs["spatial_max"] = self.__spatial_max
+        group.attrs["amplitude"] = self.__amplitude
+        group.attrs["cep"] = self.__cep
+        group.attrs["noc"] = self.__noc
+        group.attrs["temporal_min"] = self.__temporal_min
+        group.attrs["temporal_max"] = self.__temporal_max
+        group.attrs["potential_type"] = "laser"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load LaserPotential from HDF5 group."""
+        spatial_grid = group["spatial_grid"][()]
+        spatial_min = group.attrs["spatial_min"]
+        spatial_max = group.attrs["spatial_max"]
+        amplitude = group.attrs["amplitude"]
+        cep = group.attrs["cep"]
+        noc = group.attrs["noc"]
+        temporal_min = group.attrs["temporal_min"]
+        temporal_max = group.attrs["temporal_max"]
+        return cls(spatial_grid, spatial_min, spatial_max, amplitude, cep, noc, temporal_min, temporal_max)
 
 class SmoothLaserPotential(Potential):
     """Class representing a smooth laser potential.
@@ -386,3 +489,31 @@ class SmoothLaserPotential(Potential):
     @property
     def spatial_max(self) -> float:
         return self.__spatial_max
+
+    def to_hdf5_group(self, group):
+        """Save SmoothLaserPotential to HDF5 group."""
+        group.create_dataset("spatial_grid", data=self.__spatial_grid)
+        group.attrs["spatial_min"] = self.__spatial_min
+        group.attrs["spatial_max"] = self.__spatial_max
+        group.attrs["amplitude"] = self.__amplitude
+        group.attrs["cep"] = self.__cep
+        group.attrs["noc"] = self.__noc
+        group.attrs["temporal_min"] = self.__temporal_min
+        group.attrs["temporal_max"] = self.__temporal_max
+        # A beta paraméter a jumps listából kinyerhető
+        group.attrs["beta"] = self.__jumps[0][2]
+        group.attrs["potential_type"] = "smooth_laser"
+
+    @classmethod
+    def from_hdf5_group(cls, group):
+        """Load SmoothLaserPotential from HDF5 group."""
+        spatial_grid = group["spatial_grid"][()]
+        spatial_min = group.attrs["spatial_min"]
+        spatial_max = group.attrs["spatial_max"]
+        amplitude = group.attrs["amplitude"]
+        cep = group.attrs["cep"]
+        noc = group.attrs["noc"]
+        temporal_min = group.attrs["temporal_min"]
+        temporal_max = group.attrs["temporal_max"]
+        beta = group.attrs["beta"]
+        return cls(spatial_grid, spatial_min, spatial_max, amplitude, cep, noc, temporal_min, temporal_max, beta)
