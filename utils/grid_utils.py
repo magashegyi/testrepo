@@ -53,7 +53,7 @@ class Grid:
         self.grid = self._generate_grid_array(grid_params, center)
         
         # Store metadata
-        self.dx = grid_params['dx']
+        self.step_size = grid_params['step_size']
         self._num = grid_params['num']
         self._width = grid_params['width']
         self.start = grid_params['start']
@@ -132,14 +132,14 @@ class Grid:
     ) -> dict:
         """Calculate parameters for points+step initialization."""
         num = int(points)
-        dx = float(step)
-        grid_width = num * dx
+        step_size = float(step)
+        grid_width = num * step_size
         grid_start = -grid_width / 2 if center else (0 if start is None else start)
         grid_stop = grid_start + grid_width if stop is None else stop
         
         return {
             'num': num,
-            'dx': dx,
+            'step_size': step_size,
             'width': grid_width,
             'start': grid_start,
             'stop': grid_stop
@@ -155,14 +155,14 @@ class Grid:
     ) -> dict:
         """Calculate parameters for width+step initialization."""
         grid_width = float(width)
-        dx = float(step)
-        num = int(np.round(grid_width / dx))
+        step_size = float(step)
+        num = int(np.round(grid_width / step_size))
         grid_start = -grid_width / 2 if center else (0 if start is None else start)
         grid_stop = grid_start + grid_width if stop is None else stop
         
         return {
             'num': num,
-            'dx': dx,
+            'step_size': step_size,
             'width': grid_width,
             'start': grid_start,
             'stop': grid_stop
@@ -179,13 +179,13 @@ class Grid:
         """Calculate parameters for width+points initialization."""
         grid_width = float(width)
         num = int(points)
-        dx = grid_width / num
+        step_size = grid_width / num
         grid_start = -grid_width / 2 if center else (0 if start is None else start)
         grid_stop = grid_start + grid_width if stop is None else stop
         
         return {
             'num': num,
-            'dx': dx,
+            'step_size': step_size,
             'width': grid_width,
             'start': grid_start,
             'stop': grid_stop
@@ -199,12 +199,12 @@ class Grid:
     ) -> dict:
         """Calculate parameters for start+stop+points initialization."""
         num = int(points)
-        dx = (stop - start) / num
+        step_size = (stop - start) / num
         grid_width = stop - start
         
         return {
             'num': num,
-            'dx': dx,
+            'step_size': step_size,
             'width': grid_width,
             'start': start,
             'stop': stop
@@ -219,8 +219,8 @@ class Grid:
 
     @property
     def delta(self) -> float:
-        """Step size of the grid."""
-        return self.dx
+        """Step size of the grid (alias for step_size)."""
+        return self.step_size
 
     @property
     def min(self) -> float:
@@ -257,7 +257,7 @@ class Grid:
     
     def __repr__(self) -> str:
         """Return string representation of the grid."""
-        return (f"Grid(num={self.num}, dx={self.dx:.4f}, "
+        return (f"Grid(num={self.num}, step_size={self.step_size:.4f}, "
                 f"width={self.width:.4f}, start={self.start:.4f}, stop={self.stop:.4f})")
 
     def to_hdf5_group(self, group):
@@ -269,7 +269,7 @@ class Grid:
         """
         # Save basic grid properties as attributes
         group.attrs["num"] = self._num
-        group.attrs["dx"] = self.dx
+        group.attrs["step_size"] = self.step_size
         group.attrs["width"] = self._width
         group.attrs["start"] = self.start
         group.attrs["stop"] = self.stop
@@ -293,7 +293,7 @@ class Grid:
         
         # Load metadata
         num = group.attrs["num"]
-        dx = group.attrs["dx"]
+        step_size = group.attrs["step_size"]
         width = group.attrs["width"]
         start = group.attrs["start"]
         stop = group.attrs["stop"]
@@ -302,7 +302,7 @@ class Grid:
         # We use a dummy initialization and then override the values
         grid_obj = cls.__new__(cls)
         grid_obj.grid = grid_data
-        grid_obj.dx = dx
+        grid_obj.step_size = step_size
         grid_obj._num = num
         grid_obj._width = width
         grid_obj.start = start
@@ -450,9 +450,14 @@ class GridAccessor:
         return self._grid.num
     
     @property
-    def dx(self) -> float:
+    def delta(self) -> float:
+        """Grid step size (alias for step_size)."""
+        return self._grid.step_size
+    
+    @property
+    def step_size(self) -> float:
         """Grid step size."""
-        return self._grid.dx
+        return self._grid.step_size
         
     @property
     def width(self) -> float:
@@ -668,7 +673,7 @@ class SimulationGrid:
         return {
             'spatial': {
                 'num': self._spatial_grid.num,
-                'dx': self._spatial_grid.dx,
+                'step_size': self._spatial_grid.step_size,
                 'width': self._spatial_grid.width,
                 'start': self._spatial_grid.start,
                 'stop': self._spatial_grid.stop,
@@ -676,7 +681,7 @@ class SimulationGrid:
             },
             'temporal': {
                 'num': self._temporal_grid.num,
-                'dx': self._temporal_grid.dx,
+                'step_size': self._temporal_grid.step_size,
                 'width': self._temporal_grid.width,
                 'start': self._temporal_grid.start,
                 'stop': self._temporal_grid.stop,
