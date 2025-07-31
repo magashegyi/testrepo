@@ -4,7 +4,7 @@ from numpy import linalg
 import numpy as np
 import scipy
 from typing import TypedDict
-from utils.smooth_utils import smoothing1D
+from utils.smooth import smoothing1D
 import h5py
 from quantum_toolkit.quantum_toolkit import Particle  # <-- ezt adjuk hozzá az importokhoz
 

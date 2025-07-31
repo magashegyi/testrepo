@@ -6,7 +6,7 @@ import sys
 sys.path.insert(0, '../utils')
 #import os
 #sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../utils')))
-from utils.smooth_utils import smoothing1D, smooth_jumper
+from utils.smooth import smoothing1D, smooth_jumper
 
 class Potential(ABC):
     """Abstract base class for potentials.
