@@ -578,7 +578,11 @@ class HamiltonOperator:
     @property
     def grid(self):
         return self.__xgrid
-    
+
+# Complex absorbing potential generator
+# Nimrod Moiseyev, J. Phys. B 31, 1431 (1998)
+# Kalita & Gupta (2011) J. Chem. Phys. 135, 044109
+# Modified Smooth Exterior Scaling (MSES) – Gupta et al. (2023) 
 def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
                 mass=hartree_atomic_units.me,\
                 hbar=hartree_atomic_units.hb,\
@@ -625,7 +629,36 @@ def vcap_generator(uxgrid=np.linspace(0, 1, 201),\
     return Vcap
 
 #Stationary state time evolution
-def stationary_time_evolution(omega: float, times: np.array, eigenstate: Wavefunction) -> Wavefunction:
+def stationary_time_evolution(omega: float, time: float, eigenstate: Wavefunction) -> Wavefunction:
+    """
+    Compute the time evolution of an eigenstate under a given frequency.
+
+    Parameters:
+    -----------
+    omega : float
+        The angular frequency of the time evolution.
+    time : float
+        The time point at which to evaluate the time evolution.
+    eigenstate : Wavefunction
+        The initial eigenstate represented as a Wavefunction object, containing 'grid' and 'value'.
+
+    Returns:
+    --------
+    Wavefunction
+        A Wavefunction object containing the grid and the time-evolved values at each time point.
+    """
+
+    psi = np.zeros_like(eigenstate.value, dtype=np.complex128)
+    # Calculate the time-evolved wavefunction
+    # psi(t) = exp(-i*omega*t) * psi(0)
+    # where psi(0) is the initial eigenstate value
+    # and omega is the angular frequency.
+    psi[:] = np.exp(-1j * omega * time) * eigenstate.value
+
+    return Wavefunction(grid=eigenstate.grid, value=psi)
+
+#Stationary state time evolution
+def stationary_time_evolutions(omega: float, times: np.array, eigenstate: Wavefunction) -> Wavefunction:
     """
     Compute the time evolution of an eigenstate under a given frequency.
 
@@ -893,13 +926,15 @@ class SplitTimeEvolutionCalculator:
             time_index: int, the current time index
             utgrid: np.ndarray, the full time grid
         """
-        psi0_evol = stationary_time_evolution(self.__psi0_omega,
-                                              self.__utgrid, self.__psi0_initial)
+        # psi0_evol = stationary_time_evolution(self.__psi0_omega,
+        #                                       self.__utgrid, self.__psi0_initial)
+
+        psi0 = self.__psi0_initial.value
         psi1 = self.__psi1_initial
-        observer(psi0_evol.value[:, 0], psi1, psi0_evol.value[:, 0] + psi1, self.__uxgrid, self.__utgrid[0], 0, self.__utgrid)
+        observer(psi0, psi1, psi0 + psi1, self.__uxgrid, self.__utgrid[0], 0, self.__utgrid)
         for i in range(1, self.__nt):
             psi1 = self.__solver.step_one()
-            psi0 = psi0_evol.value[:, i]
+            psi0 = stationary_time_evolution(self.__psi0_omega, self.__utgrid[i], self.__psi0_initial).value
             psi = psi0 + psi1
             observer(psi0, psi1, psi, self.__uxgrid, self.__utgrid[i], i, self.__utgrid)
         #     if i % save_step == 0:
@@ -1012,11 +1047,9 @@ class SimpleTimeEvolutionCalculator:
                                 vectorpot=vectorpot,
                                 me=me, hbar=hbar, charge=charge)
 
-        if vcap is None:
-            self.v_cap = vcap_generator(self.__uxgrid)
-        else:
+        if vcap is not None:
             self.v_cap = vcap
-        hham.vcap(self.v_cap)
+            hham.vcap(self.v_cap)
 
         self.__nx = len(self.__uxgrid)
         self.__nt = len(self.__utgrid)
